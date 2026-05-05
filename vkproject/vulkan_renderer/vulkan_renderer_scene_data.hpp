@@ -21,7 +21,7 @@ struct SceneData
     SceneData(Context& context, BufferUtils& buffer_utils) : context(context), buffer_utils(buffer_utils){};
     std::vector<DrawElementsIndirectCommand> drawcalls;
     std::map<std::pair<uint32_t /* asset id */, uint32_t /* variation*/>, uint32_t /* blas_idx */>
-        vox_asset_drawcall_idx;
+        asset_drawcall_idx;
     BufferUtils::Buffer material_index_buffer;  // Offset from object info
     BufferUtils::Buffer vertex_buffer;
     BufferUtils::Buffer index_buffer;

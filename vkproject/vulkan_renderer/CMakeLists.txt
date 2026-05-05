@@ -72,5 +72,3 @@ target_include_directories( vulkan_rt_renderer
         ../../external/VulkanMemoryAllocator/include/
         ../../external/VulkanMemoryAllocator-Hpp/include/
 )
-
-add_subdirectory(triangle_demo)

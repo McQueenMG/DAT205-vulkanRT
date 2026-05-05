@@ -6,6 +6,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <vkproject/renderer.hpp>
+#include <vkproject/log.hpp>
 #include "shaders/common.glsl"
 
 void AccelerationStructure::CreateBLASes(Scene * _current_scene)
@@ -139,7 +140,7 @@ void AccelerationStructure::CreateTLAS(uint32_t swap_idx)
     for (auto& e : current_scene->entity_manager.EntitiesWithComponents<StaticRenderable>())
     {
         glm::mat4 model_matrix = e.GetComponent<StaticRenderable>()->GetModelMatrix();
-        auto blas_idx = scene_data.vox_asset_drawcall_idx[std::make_pair(e.GetComponent<StaticRenderable>()->asset, e.GetComponent<StaticRenderable>()->variation)];
+        auto blas_idx = scene_data.asset_drawcall_idx[std::make_pair(e.GetComponent<StaticRenderable>()->asset, e.GetComponent<StaticRenderable>()->variation)];
         object_infos[ctr].starting_primitive = scene_data.drawcalls[blas_idx].first_index / 3;
         object_infos[ctr].starting_vertex = scene_data.drawcalls[blas_idx].vertex_offset;
         object_infos[ctr].model_matrix = model_matrix; 
@@ -150,7 +151,7 @@ void AccelerationStructure::CreateTLAS(uint32_t swap_idx)
     {
         const auto& dr = e.GetComponent<DynamicRenderable>();
         glm::mat4 model_matrix = dr->GetCurrentAndSetPreviousModelMatrix();
-        auto blas_idx = scene_data.vox_asset_drawcall_idx[std::make_pair(e.GetComponent<DynamicRenderable>()->asset, e.GetComponent<DynamicRenderable>()->variation)];
+        auto blas_idx = scene_data.asset_drawcall_idx[std::make_pair(e.GetComponent<DynamicRenderable>()->asset, e.GetComponent<DynamicRenderable>()->variation)];
         object_infos[ctr].starting_primitive = scene_data.drawcalls[blas_idx].first_index / 3;
         object_infos[ctr].starting_vertex = scene_data.drawcalls[blas_idx].vertex_offset;
         object_infos[ctr].model_matrix = model_matrix;

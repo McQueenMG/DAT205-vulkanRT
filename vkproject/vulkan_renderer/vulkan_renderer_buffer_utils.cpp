@@ -5,8 +5,9 @@ BufferUtils::Buffer BufferUtils::CreateBuffer(
     const uint64_t size, const vk::BufferUsageFlags& usage, vma::MemoryUsage vma_usage,
     vma::AllocationCreateFlags vma_flags, bool map_buffer)
 {
+    const uint64_t actual_size = size == 0 ? 4 : size;
     vk::BufferCreateInfo bufferInfo;
-    bufferInfo.size = size;
+    bufferInfo.size = actual_size;
     bufferInfo.usage = usage;
     bufferInfo.usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
     vma::AllocationCreateInfo allocCreateInfo = {};
@@ -21,7 +22,7 @@ BufferUtils::Buffer BufferUtils::CreateBuffer(
     vk::BufferDeviceAddressInfo info{};
     info.buffer = buffer.buffer;
     buffer.device_address = context.device.getBufferAddress(info);
-    buffer.size = (uint32_t)size;
+    buffer.size = (uint32_t)actual_size;
     return buffer;
 }
 
@@ -40,6 +41,10 @@ BufferUtils::Buffer BufferUtils::CreateBuffer(const uint64_t size,
 void BufferUtils::CopyBuffer(vk::Buffer src_buffer, vk::Buffer dst_buffer, uint64_t size,
                                              uint64_t offset)
 {
+    if (size == 0 || src_buffer == VK_NULL_HANDLE || dst_buffer == VK_NULL_HANDLE)
+    {
+        return;
+    }
     vk::CommandBuffer command_buffer = context.BeginSingleTimeCommands();
     vk::BufferCopy copyRegion{};
     copyRegion.srcOffset = 0;       // Optional
@@ -51,6 +56,10 @@ void BufferUtils::CopyBuffer(vk::Buffer src_buffer, vk::Buffer dst_buffer, uint6
 
 void BufferUtils::LoadBuffer(vk::Buffer buffer, uint64_t size, const void* data, uint64_t offset)
 {
+    if (size == 0 || buffer == VK_NULL_HANDLE)
+    {
+        return;
+    }
     // Put data in staging buffer
     vk::BufferCreateInfo stagingBufferInfo;
     stagingBufferInfo.size = size;
@@ -70,6 +79,7 @@ void BufferUtils::LoadBuffer(vk::Buffer buffer, uint64_t size, const void* data,
 
 void BufferUtils::DestroyBuffer(Buffer& buffer) 
 { 
+    if (buffer.buffer == VK_NULL_HANDLE) return;
     context.allocator.destroyBuffer(buffer.buffer, buffer.allocation); 
     buffer.size = 0; 
 }

@@ -26,4 +26,6 @@ target_include_directories( vkproject PRIVATE ../external/glfw/include ../extern
 target_link_libraries( vkproject PRIVATE vulkan_renderer)
 target_link_libraries( vkproject PRIVATE vulkan_rt_renderer)
 
+add_subdirectory(iceCreamRacer)
+
 

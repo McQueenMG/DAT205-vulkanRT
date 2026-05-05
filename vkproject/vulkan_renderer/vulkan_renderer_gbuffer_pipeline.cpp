@@ -352,7 +352,7 @@ void VulkanRTRenderer::GBufferPipeline::Submit(uint32_t image_index, const glm::
     for (auto& e : current_scene->entity_manager.EntitiesWithComponents<StaticRenderable>())
     {
         glm::mat4 model_matrix = e.GetComponent<StaticRenderable>()->GetModelMatrix();
-        auto drawcall_idx = scene_data.vox_asset_drawcall_idx[std::make_pair(
+        auto drawcall_idx = scene_data.asset_drawcall_idx[std::make_pair(
             e.GetComponent<StaticRenderable>()->asset, e.GetComponent<StaticRenderable>()->variation)];
         current_commands[num_commands] = scene_data.drawcalls[drawcall_idx];
         ModelUniforms m{model_matrix};
@@ -363,7 +363,7 @@ void VulkanRTRenderer::GBufferPipeline::Submit(uint32_t image_index, const glm::
     {
         const auto& dr = e.GetComponent<DynamicRenderable>();
         glm::mat4 model_matrix = dr->GetCurrentAndSetPreviousModelMatrix();
-        auto drawcall_idx = scene_data.vox_asset_drawcall_idx[std::make_pair(
+        auto drawcall_idx = scene_data.asset_drawcall_idx[std::make_pair(
             e.GetComponent<DynamicRenderable>()->asset, e.GetComponent<DynamicRenderable>()->variation)];
         current_commands[num_commands] = scene_data.drawcalls[drawcall_idx];
         ModelUniforms m{model_matrix};

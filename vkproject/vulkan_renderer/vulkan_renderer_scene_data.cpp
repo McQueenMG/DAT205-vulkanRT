@@ -22,18 +22,61 @@ void SceneData::Create(Scene* _current_scene)
 
     for (auto& c : assets)
     {
-        auto& asset = asset_manager->vox_asset_by_id[c].second;
-        for (uint32_t v = 0; v < asset.num_variations; v++)
+        const auto asset_type = asset_manager->GetAssetType(c);
+        const uint32_t num_variations = asset_manager->GetAssetVariationCount(c);
+        for (uint32_t v = 0; v < num_variations; v++)
         {
             LOG(INFO) << "Reading asset " << c << ", variation " << v << "...";
-            vox_asset_drawcall_idx[std::make_pair(c, v)] = (uint32_t)drawcalls.size();
+            asset_drawcall_idx[std::make_pair(c, v)] = (uint32_t)drawcalls.size();
             drawcalls.push_back({});
 
-            // Read data
-            auto [coords, materials, voxel_material_indices] =
-                magica::LoadMagicaModel(asset_manager->GetVoxAsset(c).data, v);
-            auto [vertices, material_indices, indices] =
-                magica::CreateMeshFromMagicaModel(coords, voxel_material_indices);
+            std::vector<glm::vec3> vertices;
+            std::vector<uint32_t> material_indices;
+            std::vector<glm::ivec3> indices;
+            std::vector<Material> materials;
+
+            if (asset_type == AssetManager::AssetType::Vox)
+            {
+                auto [coords, loaded_materials, voxel_material_indices] =
+                    magica::LoadMagicaModel(asset_manager->GetVoxAsset(c).data, v);
+                auto [loaded_vertices, loaded_material_indices, loaded_indices] =
+                    magica::CreateMeshFromMagicaModel(coords, voxel_material_indices);
+                vertices = std::move(loaded_vertices);
+                material_indices = std::move(loaded_material_indices);
+                indices = std::move(loaded_indices);
+                materials = std::move(loaded_materials);
+            }
+            else
+            {
+                auto mesh_asset = asset_manager->GetMeshAsset(c);
+                if (v >= mesh_asset.variations.size())
+                {
+                    LOG(ERROR) << "Variation " << v << " out of bounds for mesh asset " << c;
+                    continue;
+                }
+
+                const auto& mesh = mesh_asset.variations[v];
+                vertices = mesh.vertices;
+                indices = mesh.indices;
+                material_indices = mesh.material_indices;
+                materials = mesh.materials;
+
+                if (materials.empty())
+                {
+                    Material default_material{};
+                    default_material.color = glm::vec3(1.0f, 1.0f, 1.0f);
+                    default_material.emittance = 0.0f;
+                    default_material.shininess = 0.0f;
+                    default_material.metalness = 0.0f;
+                    materials.push_back(default_material);
+                }
+
+                if (material_indices.empty())
+                {
+                    material_indices.resize(indices.size(), 0);
+                }
+            }
+
             assert(indices.size() == material_indices.size());
 
             auto& drawcall = drawcalls.back();
@@ -73,7 +116,7 @@ void SceneData::Create(Scene* _current_scene)
 void SceneData::Destroy()
 {
     drawcalls.clear();
-    vox_asset_drawcall_idx.clear();
+    asset_drawcall_idx.clear();
     buffer_utils.DestroyBuffer(material_index_buffer);
     buffer_utils.DestroyBuffer(index_buffer);
     buffer_utils.DestroyBuffer(vertex_buffer);

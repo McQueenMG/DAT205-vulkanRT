@@ -7,9 +7,9 @@ struct BufferUtils
     {
         vk::Buffer buffer = {};
         vma::Allocation allocation;
-        void* host_ptr;
-        vk::DeviceAddress device_address;
-        uint32_t size;
+        void* host_ptr = nullptr;
+        vk::DeviceAddress device_address = {};
+        uint32_t size = 0;
     };
     Context& context;
     BufferUtils(Context& context) : context(context) {}

@@ -35,14 +35,10 @@ void Game::Start()
 
 void Game::Quit() {
 	Destroy();
-    for (auto s : scenes) s->Destroy(); 
-    renderer->Destroy();
 	should_quit = true; 
 }
 
 void Game::Restart() { 
     Destroy();  
-    for (auto s : scenes) s->Destroy();
-    scenes.clear();
     should_restart = true; 
 }

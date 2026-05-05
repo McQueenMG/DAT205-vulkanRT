@@ -5,7 +5,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 enum Keys
 {
-    W, A, S, D, ESCAPE, SPACE, NUM_KEYS
+    W, A, S, D, ESCAPE, SPACE, SHIFT, NUM_KEYS
 };
 
 
