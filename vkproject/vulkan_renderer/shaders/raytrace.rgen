@@ -1,0 +1,138 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+#include "common.glsl"
+
+// Steps the RNG and returns a floating-point value between 0 and 1 inclusive.
+float randf(inout uint rngState)
+{
+  // Condensed version of pcg_output_rxs_m_xs_32_32, with simple conversion to floating-point [0,1].
+  rngState  = rngState * 747796405 + 1;
+  uint word = ((rngState >> ((rngState >> 28) + 4)) ^ rngState) * 277803737;
+  word      = (word >> 22) ^ word;
+  return float(word) / 4294967295.0f;
+}
+
+layout(push_constant) uniform _PushConstants { PushConstants push_constants; };
+
+
+layout(location = 0) rayPayloadEXT hitPayload prd;
+
+layout(std430, set = 0, binding = 5) buffer Materials
+{
+    Material materials[];
+};
+
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+layout(set = 0, binding = 6, rgba32f) uniform image2D out_final_image;
+layout(set = 0, binding = 7) uniform sampler2D in_final_image;
+layout(std430, set = 0, binding = 8) buffer Lights
+{
+    Light lights[];
+};
+
+
+vec3 Environment(vec3 d)
+{  
+  vec3 sky = vec3(0.4, 0.2, 0.1); 
+  float blend = pow(abs(dot(d, vec3(0.0, 0.0, 1.0))), 0.5);
+  sky = (1.0 - blend) * sky + blend * vec3(0.0); // White up above
+  sky *= 0.5; 
+  return sky * 10.0;
+}
+
+vec3 homogenize(vec4 v) {
+  return v.xyz / v.w;
+}
+
+mat3 tangentSpace(vec3 n)
+{
+  float sign = n.z > 0.0 ? 1.0 : -1.0; 
+  float a = -1.0f / (sign + n.z);
+  float b = n.x * n.y * a;
+  mat3 r;
+  r[0] = vec3(1.0f + sign * n.x * n.x * a, sign * b, -sign * n.x);
+  r[1] = vec3(b, sign + n.y * n.y * a, -n.y);
+  r[2] = n;
+  return r;
+}
+
+bool ShadowRay(vec3 p0, vec3 n, vec3 p1)
+{
+    prd.hit = true; 
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsTerminateOnFirstHitEXT, 
+                0xFF, 0, 0, 0, p0 + 0.01 * n, 0.001, normalize(p1-p0), length(p1-p0), 0);
+    return prd.hit; 
+}
+
+vec3 CalculateDirectIllumination(vec3 p, vec3 wo, vec3 n, Material mat)
+{
+  vec3 final_color = vec3(0.0);
+  for(int i=0; i<push_constants.num_lights; i++)
+  {    
+    vec3 wi = normalize(lights[i].position - p);
+    float r = length(lights[i].position - p);
+    vec3 brdf = mat.color * (1.0 / PI); 
+    if(!ShadowRay(p, n, lights[i].position)) 
+    {
+      vec3 L = lights[i].intensity * (1.0 / (r * r));
+      final_color += L * max(dot(n, wi), 0.0) * brdf; 
+    }
+  }
+  final_color += mat.emittance * 10.0 * mat.color;
+  return final_color;
+}
+
+
+void main()
+{
+  uint seed = push_constants.frame * gl_LaunchSizeEXT.x * gl_LaunchSizeEXT.y + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y + gl_LaunchIDEXT.x; 
+  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5, 0.5);
+  const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
+  vec2       d           = inUV * 2.0 - 1.0;
+  vec4 origin    = push_constants.inv_view * vec4(0, 0, 0, 1);
+  vec4 target    = push_constants.inv_proj * vec4(d.x, d.y, 1, 1);
+  vec4 direction = push_constants.inv_view * vec4(normalize(target.xyz), 0);
+
+    
+  /////////////////////////////////////////////////////////////////////////////
+  // Trace the primary ray
+  /////////////////////////////////////////////////////////////////////////////
+  traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin.xyz, 0.1, direction.xyz, 1000.0, 0);
+
+  if(prd.hit) {
+    hitPayload ch_prd = prd; 
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Direct illumination
+    ///////////////////////////////////////////////////////////////////////////
+    bool is_metal = materials[ch_prd.mat_id].metalness > 0.5; 
+    bool is_glass = materials[ch_prd.mat_id].metalness < 0.0; 
+    bool is_diffuse = !is_glass && materials[ch_prd.mat_id].shininess == 0.0; 
+    bool is_perfect_specular = is_glass || materials[ch_prd.mat_id].shininess < 0.0; 
+    float R0 = (is_metal && !is_glass) ? 0.9 : 0.1;     
+    vec3 final_color = materials[ch_prd.mat_id].color;
+    final_color = CalculateDirectIllumination(ch_prd.position, -direction.xyz, ch_prd.normal, materials[ch_prd.mat_id]);
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Direct Simple and slow indirect (environment) illumination
+    ///////////////////////////////////////////////////////////////////////////
+    uint num_samples = push_constants.num_indirect_samples;
+    for(int i=0; i<num_samples; i++) {
+        vec3 dir = cosineSampleHemisphere(randf(seed), randf(seed));
+        if(!ShadowRay(ch_prd.position, ch_prd.normal, ch_prd.position + 1000.0 * dir))
+        {
+            vec3 L = (1.0 / float(num_samples)) * Environment(dir);
+            vec3 brdf = materials[ch_prd.mat_id].color * (1.0 / PI); 
+            final_color += L * brdf * max(0.0, dot(ch_prd.normal, dir)); 
+        }
+    }
+
+
+    imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(final_color, 1.0));
+  }
+  else {
+    vec4 out_color = vec4(Environment(direction.xyz), 1.0);
+    imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), out_color);
+  }
+}
