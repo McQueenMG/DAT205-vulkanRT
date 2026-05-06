@@ -16,6 +16,9 @@ add_library(vkproject
     asset_manager.cpp
     ogt_vox.hpp
     ogt_vox.cpp
+    triangle_asset.cpp
+    triangle_asset.hpp
+    stb_image_impl.cpp
 )
 
 # Common libraries

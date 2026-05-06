@@ -55,6 +55,8 @@ struct Material
   float metalness;
   float shininess;
   float dummy0, dummy1;
+  int diffuse_texture_index;
+  int normal_texture_index;
 };
 
 ///////////////////////////////////////////////////////////////////////////

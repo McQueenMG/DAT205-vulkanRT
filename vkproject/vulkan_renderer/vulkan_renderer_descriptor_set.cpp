@@ -66,6 +66,8 @@ void DescriptorSet::Create()
 
 void DescriptorSet::Update(const std::vector<DescriptorInput>& input_data)
 {
+
+    assert(input_data.size() == descriptors.size());
     using DescriptorData =
         std::variant<vk::WriteDescriptorSetAccelerationStructureKHR, vk::DescriptorBufferInfo, vk::DescriptorImageInfo>;
     std::vector<DescriptorData> descriptor_data(descriptors.size());
@@ -103,11 +105,23 @@ void DescriptorSet::Update(const std::vector<DescriptorInput>& input_data)
                 descriptor_data[i] = vk::DescriptorImageInfo();
                 auto* image_info = &std::get<vk::DescriptorImageInfo>(descriptor_data[i]);
                 auto& image_view = std::get<vk::ImageView*>(input_data[i]);
-                image_info->imageLayout = vk::ImageLayout::eGeneral;
-                image_info->imageView = *image_view;
-                image_info->sampler = descriptors[i].descriptorType == vk::DescriptorType::eCombinedImageSampler
-                                          ? texture_utils.default_sampler
-                                          : VK_NULL_HANDLE;
+                if (image_view == nullptr)
+                {
+                    continue;
+                }
+                else
+                {
+                    image_info->imageView = *image_view;
+                    image_info->imageLayout = vk::ImageLayout::eGeneral;
+                    if (descriptors[i].descriptorType == vk::DescriptorType::eCombinedImageSampler)
+                    {
+                        image_info->sampler = texture_utils.default_sampler;
+                    }
+                    else
+                    {
+                        image_info->sampler = VK_NULL_HANDLE;
+                    }
+                }
                 descriptor_writes[i].pImageInfo = image_info;
                 break;
             };

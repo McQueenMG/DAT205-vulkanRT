@@ -3,7 +3,8 @@
 #include <map>
 #include <vector>
 #include "magica.hpp"
-#include <glm/glm.hpp>
+
+#include "triangle_asset.hpp"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Currently mostly a stub, the asset manager is going to be the one-stop-shop 
@@ -18,13 +19,7 @@ struct AssetManager
         TriangleMesh,
     };
 
-    struct TriangleMesh
-    {
-        std::vector<glm::vec3> vertices;
-        std::vector<glm::ivec3> indices;
-        std::vector<Material> materials;
-        std::vector<uint32_t> material_indices;
-    };
+    using TriangleMesh = triangle_asset::TriangleMesh;
 
     ///////////////////////////////////////////////////////////////////////////
     // Vox assets are voxel grids loaded from magicavoxel files
@@ -54,7 +49,6 @@ struct AssetManager
     // Register triangle meshes directly (for imported or procedural assets).
     MeshAsset RegisterMeshAsset(const std::string& name, const TriangleMesh& mesh);
     MeshAsset RegisterMeshAsset(const std::string& name, const std::vector<TriangleMesh>& variations);
-    MeshAsset LoadObjAsset(const std::string& filename);
     MeshAsset GetMeshAsset(uint32_t asset_id);
     bool HasVoxAsset(uint32_t asset_id) const;
     bool HasMeshAsset(uint32_t asset_id) const;

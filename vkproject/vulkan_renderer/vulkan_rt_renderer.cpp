@@ -7,19 +7,18 @@
 #include <vkproject/magica.hpp>
 #include <vkproject/asset_manager.hpp>
 
-
 ///////////////////////////////////////////////////////////////////////////////
 // GLFW callbacks
 ///////////////////////////////////////////////////////////////////////////////
 
-void GLFWErrorCallback(int error, const char* description)
+void GLFWErrorCallback(int error, const char *description)
 {
     LOG(WARNING) << "GLFW Error[" << error << "]: " << description;
 }
 
-static void FramebufferResizeCallback(GLFWwindow* window, int width, int height)
+static void FramebufferResizeCallback(GLFWwindow *window, int width, int height)
 {
-    auto renderer = reinterpret_cast<VulkanRTRenderer*>(glfwGetWindowUserPointer(window));
+    auto renderer = reinterpret_cast<VulkanRTRenderer *>(glfwGetWindowUserPointer(window));
     renderer->framebuffer_resized = true;
 }
 
@@ -34,18 +33,18 @@ void VulkanRTRenderer::Init(int width, int height)
         LOG(FATAL) << "GLFW Initialization failed";
     else
         LOG(INFO) << "GLFW Initialized";
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // No OpenGL
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // No OpenGL
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-    GLFWwindow* glfw_window = glfwCreateWindow(window_size.x, window_size.y, "Vulkan renderer", NULL, NULL);
+    GLFWwindow *glfw_window = glfwCreateWindow(window_size.x, window_size.y, "Vulkan renderer", NULL, NULL);
     glfwSetWindowUserPointer(glfw_window, this);
     glfwSetFramebufferSizeCallback(glfw_window, FramebufferResizeCallback);
-    if (!glfw_window) LOG(FATAL) << "GLFW Window failed to open.";
+    if (!glfw_window)
+        LOG(FATAL) << "GLFW Window failed to open.";
 
     ///////////////////////////////////////////////////////////////////////////
     // Set up address loading for extensions
     ///////////////////////////////////////////////////////////////////////////
     VULKAN_HPP_DEFAULT_DISPATCHER.init(::vkGetInstanceProcAddr);
-
 
     ///////////////////////////////////////////////////////////////////////////
     // Initialize Vulkan
@@ -60,55 +59,60 @@ void VulkanRTRenderer::Init(int width, int height)
     blit_descriptor_set.Create();
     blit_pipeline.Create();
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eAccelerationStructureKHR,
-                  vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
+                                     vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
     rt_descriptor_set.AddDescriptors(5, vk::DescriptorType::eStorageBuffer,
-                   vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
-    rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR);  
+                                     vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
+    rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR);
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eCombinedImageSampler,
-                                          vk::ShaderStageFlagBits::eRaygenKHR);
+                                     vk::ShaderStageFlagBits::eRaygenKHR);
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageBuffer,
                                      vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
+
+    rt_descriptor_set.AddDescriptors(256, vk::DescriptorType::eCombinedImageSampler,
+                                     vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR);
+
     rt_descriptor_set.Create();
     rt_pipeline.Create();
-    imgui_context.Create(); 
+    imgui_context.Create();
 }
 
-void VulkanRTRenderer::Destroy() 
-{ 
+void VulkanRTRenderer::Destroy()
+{
     context.device.waitIdle();
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
         acceleration_structure.DestroyTLAS(i);
     acceleration_structure.DestroyBLASes();
     rt_pipeline.Destroy();
     rt_descriptor_set.Destroy();
-    blit_pipeline.Destroy(); 
+    blit_pipeline.Destroy();
     blit_descriptor_set.Destroy();
     rt_rendertarget.Destroy();
     imgui_context.Destroy();
     scene_data.Destroy();
     texture_utils.Destroy();
-    swapchain.Destroy(); 
-    context.Destroy(); 
+    swapchain.Destroy();
+    context.Destroy();
 }
 
-void VulkanRTRenderer::SetScene(Scene* scene) {
+void VulkanRTRenderer::SetScene(Scene *scene)
+{
     context.device.waitIdle();
     current_scene = scene;
-    scene_data.Destroy(); 
+    scene_data.Destroy();
     scene_data.Create(scene);
     acceleration_structure.DestroyBLASes();
     acceleration_structure.CreateBLASes(scene);
 }
 
-void VulkanRTRenderer::SetCamera(const glm::vec3& eye, const glm::vec3& target, const glm::vec3& up)
+void VulkanRTRenderer::SetCamera(const glm::vec3 &eye, const glm::vec3 &target, const glm::vec3 &up)
 {
     float aspect_ratio = context.GetWindowSize().width / float(context.GetWindowSize().height);
     P = glm::perspective(glm::radians(45.0f), aspect_ratio, 100.0f, 1000.0f);
     V = glm::lookAt(eye, target, up);
 }
 
-void VulkanRTRenderer::NewFrame() 
-{ 
+void VulkanRTRenderer::NewFrame()
+{
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -124,22 +128,22 @@ void VulkanRTRenderer::Render()
     uint32_t image_index = swapchain.Swap();
     if (image_index == UINT32_MAX)
         return;
-    auto& command_buffer = context.command_buffers[swapchain.current];
+    auto &command_buffer = context.command_buffers[swapchain.current];
     command_buffer.reset();
 
-    ImGui::Begin("RT Renderer"); 
+    ImGui::Begin("RT Renderer");
     ImGui::SliderInt("Indirect samples", &rt_pipeline.num_indirect_samples, 0, 64);
-    ImGui::End(); 
+    ImGui::End();
 
     ///////////////////////////////////////////////////////////////////////////
     // Set lights
     ///////////////////////////////////////////////////////////////////////////
-    std::vector<Light> lights; 
+    std::vector<Light> lights;
     for (auto e : current_scene->entity_manager.EntitiesWithComponents<LightComponent>())
     {
-        Light l; 
-        l.position = e.GetComponent<LightComponent>()->position; 
-        l.intensity = e.GetComponent<LightComponent>()->intensity; 
+        Light l;
+        l.position = e.GetComponent<LightComponent>()->position;
+        l.intensity = e.GetComponent<LightComponent>()->intensity;
         lights.push_back(l);
     }
     rt_pipeline.SetLights(lights);
@@ -151,12 +155,50 @@ void VulkanRTRenderer::Render()
     auto result = command_buffer.begin(&begin_info);
 
     acceleration_structure.CreateTLAS(swapchain.current);
-    rt_descriptor_set.Update({&acceleration_structure.tlas_data[swapchain.current].TLAS,
-                              &acceleration_structure.object_info_buffer, &scene_data.material_index_buffer,
-                              &scene_data.index_buffer, &scene_data.vertex_buffer, &scene_data.material_buffer,
-                              &rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 0) % 2],
-                              &rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 1) % 2], &rt_pipeline.lights_buffer[swapchain.current]});
+    // Build descriptor inputs in order: existing descriptors + material textures
+    std::vector<DescriptorSet::DescriptorInput> descriptor_inputs;
+
+    // Existing 9 descriptors
+    descriptor_inputs.push_back(&acceleration_structure.tlas_data[swapchain.current].TLAS);
+    descriptor_inputs.push_back(&acceleration_structure.object_info_buffer);
+    descriptor_inputs.push_back(&scene_data.material_index_buffer);
+    descriptor_inputs.push_back(&scene_data.index_buffer);
+    descriptor_inputs.push_back(&scene_data.vertex_buffer);
+    descriptor_inputs.push_back(&scene_data.material_buffer);
+    descriptor_inputs.push_back(&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 0) % 2]);
+    descriptor_inputs.push_back(&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 1) % 2]);
+    descriptor_inputs.push_back(&rt_pipeline.lights_buffer[swapchain.current]);
+
+    vk::ImageView* fallback_view = nullptr;
+    for (auto& t : scene_data.material_textures_gpu)
+    {
+        if (t.image)
+        {
+            fallback_view = &t.image_view;
+            break;
+        }
+    }
+
+    // Material textures (up to 256)
+    for (size_t i = 0; i < scene_data.material_textures_gpu.size() && i < 256; ++i)
+    {
+        if (scene_data.material_textures_gpu[i].image)
+            descriptor_inputs.push_back(&scene_data.material_textures_gpu[i].image_view);
+        else
+            descriptor_inputs.push_back(fallback_view);
+    }
+
+    // IMPORTANT: pad to match descriptor count exactly
+    while (descriptor_inputs.size() < 9 + 256)
+    {
+        descriptor_inputs.push_back(fallback_view);
+    }
+        
+
+    rt_descriptor_set.Update(descriptor_inputs);
+
     rt_pipeline.Submit(P, V, rt_rendertarget.images[rt_descriptor_set.current_image_base % 2]);
+
     blit_descriptor_set.Update({&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 0) % 2]});
     swapchain.BeginRenderPass(command_buffer, image_index, glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
     blit_pipeline.Submit(image_index);
@@ -166,7 +208,7 @@ void VulkanRTRenderer::Render()
     ///////////////////////////////////////////////////////////////////////////
     // End and Submit Command Buffer
     ///////////////////////////////////////////////////////////////////////////
-        swapchain.EndRenderPassAndSubmit(command_buffer, image_index);
+    swapchain.EndRenderPassAndSubmit(command_buffer, image_index);
 
     ///////////////////////////////////////////////////////////////////////////
     // Handle reshape
@@ -183,10 +225,3 @@ void VulkanRTRenderer::Render()
     ///////////////////////////////////////////////////////////////////////////
     swapchain.Present(framebuffer_resized, image_index);
 }
-
-
-
-
-
-
-

@@ -42,7 +42,8 @@ add_library(imgui
     "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_widgets.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/imgui_tables.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_vulkan.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_glfw.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends/imgui_impl_glfw.cpp"
+    external/stb/stb_image.h)
 target_link_libraries( imgui
     PRIVATE
         Vulkan::Vulkan 

@@ -31,7 +31,7 @@ struct VulkanRTRenderer : public IRenderer
     TextureUtils texture_utils{context};
     SwapChain swapchain{context};
     ImGuiContext imgui_context{context, swapchain};
-    SceneData scene_data{context, buffer_utils};
+    SceneData scene_data{context, buffer_utils, texture_utils};
     
     DescriptorSet rt_descriptor_set{context, texture_utils, swapchain};
     DescriptorSet blit_descriptor_set{context, texture_utils, swapchain};

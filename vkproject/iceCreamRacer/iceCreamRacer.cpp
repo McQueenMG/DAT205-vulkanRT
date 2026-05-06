@@ -1,9 +1,6 @@
 #include "iceCreamRacer.hpp"
 
-#include <algorithm>
 #include <filesystem>
-#include <limits>
-#include <stdexcept>
 
 #include <GLFW/glfw3.h>
 #include <ecs/ECS.h>
@@ -17,6 +14,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 #include <vkproject/scene.hpp>
 #include <vkproject/asset_manager.hpp>
+#include <vkproject/triangle_asset.hpp>
 #include <vkproject/game.hpp>
 #include <vkproject/log.hpp>
 #include <vkproject/renderer.hpp>
@@ -38,52 +36,6 @@ namespace
 {
 bool g_components_registered = false;
 
-AssetManager::TriangleMesh NormalizeMesh(const AssetManager::TriangleMesh& input_mesh)
-{
-    AssetManager::TriangleMesh mesh = input_mesh;
-    if (mesh.vertices.empty()) return mesh;
-
-    glm::vec3 min_v(std::numeric_limits<float>::max());
-    glm::vec3 max_v(std::numeric_limits<float>::lowest());
-    for (const auto& v : mesh.vertices)
-    {
-        min_v = glm::min(min_v, v);
-        max_v = glm::max(max_v, v);
-    }
-
-    const glm::vec3 center = 0.5f * (min_v + max_v);
-    const glm::vec3 extents = max_v - min_v;
-    const float largest_extent = std::max(extents.x, std::max(extents.y, extents.z));
-    const float scale = (largest_extent > 0.0f) ? (4.0f / largest_extent) : 1.0f;
-
-    for (auto& v : mesh.vertices)
-    {
-        v = (v - center) * scale;
-    }
-    return mesh;
-}
-
-AssetManager::TriangleMesh CreateFloorMesh()
-{
-    AssetManager::TriangleMesh mesh;
-    mesh.vertices = {
-        {-12.0f, -12.0f, 3.0f},
-        {12.0f, -12.0f, 3.0f},
-        {12.0f, 12.0f, 3.0f},
-        {-12.0f, 12.0f, 3.0f}
-    };
-    mesh.indices = {glm::ivec3(0, 1, 2), glm::ivec3(0, 2, 3)};
-
-    Material floor_material{};
-    floor_material.color = glm::vec3(0.13f, 0.15f, 0.17f);
-    floor_material.emittance = 0.0f;
-    floor_material.metalness = 0.0f;
-    floor_material.shininess = 0.0f;
-    mesh.materials = {floor_material};
-    mesh.material_indices = {0, 0};
-    return mesh;
-}
-
 class IceCreamCarScene : public Scene
 {
 public:
@@ -104,17 +56,20 @@ public:
         const std::filesystem::path vkproject_root = source_path.parent_path().parent_path();
         const std::filesystem::path car_obj_path = vkproject_root / "triangleObjects/ice_cream_car/ice_cream_car.obj";
 
-        auto car_asset = asset_manager->LoadObjAsset(car_obj_path.string());
-        if (car_asset.variations.empty())
-        {
-            throw std::runtime_error("ice_cream_car OBJ did not produce a mesh variation");
-        }
-
-        auto normalized_car = NormalizeMesh(car_asset.variations[0]);
-        auto registered_car = asset_manager->RegisterMeshAsset("ice_cream_car_demo", normalized_car);
+        auto car_mesh = triangle_asset::LoadObjMesh(car_obj_path.string());
+        car_mesh = triangle_asset::NormalizeTriangleMesh(car_mesh);
+        car_mesh = triangle_asset::OrientTriangleMeshOutwards(car_mesh);
+        auto registered_car = asset_manager->RegisterMeshAsset("ice_cream_car_demo", car_mesh);
         car_asset_id = registered_car.asset_id;
 
-        auto registered_floor = asset_manager->RegisterMeshAsset("ice_cream_car_demo_floor", CreateFloorMesh());
+        Material floor_material{};
+        floor_material.color = glm::vec3(0.13f, 0.15f, 0.17f);
+        floor_material.emittance = 0.0f;
+        floor_material.metalness = 0.0f;
+        floor_material.shininess = 0.0f;
+        auto registered_floor = asset_manager->RegisterMeshAsset(
+            "ice_cream_car_demo_floor",
+            triangle_asset::CreateQuadMesh(glm::vec3(-12.0f, -12.0f, 3.0f), glm::vec3(12.0f, 12.0f, 3.0f), floor_material));
         floor_asset_id = registered_floor.asset_id;
 
         auto& car_entity = entity_manager.Create();
