@@ -60,7 +60,7 @@ namespace magica
                     auto color = scene->palette.color[color_idx];
                     glm::vec3 fcolor = glm::vec3(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f);                    
                     material_indices.push_back(color_idx);
-                    material_map[color_idx].color = fcolor;
+                    material_map[color_idx].color = glm::vec4(fcolor, 1.0f);
                     material_map[color_idx].emittance = scene->materials.matl[color_idx].emit;
                     float r = scene->materials.matl[color_idx].rough;
                     // A shininess of 0 means diffuse. A shininess of -1 means perfect specular.

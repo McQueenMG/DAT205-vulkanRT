@@ -58,18 +58,20 @@ void VulkanRTRenderer::Init(int width, int height)
                                        vk::ShaderStageFlagBits::eFragment);
     blit_descriptor_set.Create();
     blit_pipeline.Create();
+
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eAccelerationStructureKHR,
-                                     vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
-    rt_descriptor_set.AddDescriptors(5, vk::DescriptorType::eStorageBuffer,
-                                     vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
+                                     vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eAnyHitKHR);
+    rt_descriptor_set.AddDescriptors(6, vk::DescriptorType::eStorageBuffer,
+                                     vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eAnyHitKHR);
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR);
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eCombinedImageSampler,
                                      vk::ShaderStageFlagBits::eRaygenKHR);
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageBuffer,
                                      vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
 
-    rt_descriptor_set.AddDescriptors(256, vk::DescriptorType::eCombinedImageSampler,
-                                     vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR);
+    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+                                         vk::ImageLayout::eShaderReadOnlyOptimal);
 
     rt_descriptor_set.Create();
     rt_pipeline.Create();
@@ -158,42 +160,25 @@ void VulkanRTRenderer::Render()
     // Build descriptor inputs in order: existing descriptors + material textures
     std::vector<DescriptorSet::DescriptorInput> descriptor_inputs;
 
-    // Existing 9 descriptors
+    // Existing 10 descriptors
     descriptor_inputs.push_back(&acceleration_structure.tlas_data[swapchain.current].TLAS);
     descriptor_inputs.push_back(&acceleration_structure.object_info_buffer);
     descriptor_inputs.push_back(&scene_data.material_index_buffer);
     descriptor_inputs.push_back(&scene_data.index_buffer);
     descriptor_inputs.push_back(&scene_data.vertex_buffer);
+    descriptor_inputs.push_back(&scene_data.uv_buffer);
     descriptor_inputs.push_back(&scene_data.material_buffer);
     descriptor_inputs.push_back(&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 0) % 2]);
     descriptor_inputs.push_back(&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 1) % 2]);
     descriptor_inputs.push_back(&rt_pipeline.lights_buffer[swapchain.current]);
 
-    vk::ImageView* fallback_view = nullptr;
-    for (auto& t : scene_data.material_textures_gpu)
+    vk::ImageView *fallback_view = scene_data.material_textures_gpu.empty() ? nullptr : &scene_data.material_textures_gpu.front().image_view;
+    std::vector<vk::ImageView *> material_texture_views(256, fallback_view);
+    for (size_t i = 0; i < scene_data.material_textures_gpu.size() && i < material_texture_views.size(); ++i)
     {
-        if (t.image)
-        {
-            fallback_view = &t.image_view;
-            break;
-        }
+        material_texture_views[i] = &scene_data.material_textures_gpu[i].image_view;
     }
-
-    // Material textures (up to 256)
-    for (size_t i = 0; i < scene_data.material_textures_gpu.size() && i < 256; ++i)
-    {
-        if (scene_data.material_textures_gpu[i].image)
-            descriptor_inputs.push_back(&scene_data.material_textures_gpu[i].image_view);
-        else
-            descriptor_inputs.push_back(fallback_view);
-    }
-
-    // IMPORTANT: pad to match descriptor count exactly
-    while (descriptor_inputs.size() < 9 + 256)
-    {
-        descriptor_inputs.push_back(fallback_view);
-    }
-        
+    descriptor_inputs.push_back(material_texture_views);
 
     rt_descriptor_set.Update(descriptor_inputs);
 

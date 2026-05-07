@@ -1,8 +1,8 @@
-
 #define PI 3.14159265359
 
 #ifdef __cplusplus
 #pragma once
+typedef glm::vec4 vec4;
 typedef uint32_t uint;
 typedef glm::mat4 mat4;
 typedef glm::vec3 vec3;
@@ -34,7 +34,8 @@ struct hitPayload
 {
   bool hit; 
   uint mat_id; 
-  vec3 position, normal, prev_position;
+        vec3 position, normal, prev_position;
+        vec2 uv;
 };
 
 
@@ -50,13 +51,15 @@ struct ObjectInfo
 
 struct Material
 {
-  vec3 color; 
-  float emittance;
-  float metalness;
-  float shininess;
-  float dummy0, dummy1;
-  int diffuse_texture_index;
-  int normal_texture_index;
+  vec4 color;                  // 16 bytes
+  float emittance;             // 4
+  float metalness;             // 4
+  float shininess;             // 4
+  float dummy0;                // 4  -> completes 2nd 16-byte block
+  int diffuse_texture_index;   // 4
+  int normal_texture_index;    // 4
+  int flip_uv_x;               // 4  <- ADD THIS (0 or 1)
+  int flip_uv_y;               // 4  <- ADD THIS (0 or 1)
 };
 
 ///////////////////////////////////////////////////////////////////////////

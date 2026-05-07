@@ -9,7 +9,7 @@
 #include <vkproject/log.hpp>
 #include "shaders/common.glsl"
 
-void AccelerationStructure::CreateBLASes(Scene * _current_scene)
+void AccelerationStructure::CreateBLASes(Scene *_current_scene)
 {
     current_scene = _current_scene;
     std::vector<uint32_t> assets = current_scene->GetUsedAssets();
@@ -17,7 +17,7 @@ void AccelerationStructure::CreateBLASes(Scene * _current_scene)
     // One BLAS per "template" drawcall in SceneData
     ///////////////////////////////////////////////////////////////////////////
     vk::AccelerationStructureGeometryTrianglesDataKHR triangles{};
-    triangles.vertexFormat = vk::Format::eR32G32B32Sfloat;  // vec3 vertex position data.
+    triangles.vertexFormat = vk::Format::eR32G32B32Sfloat; // vec3 vertex position data.
     triangles.vertexData.deviceAddress =
         scene_data.vertex_buffer.device_address;
     triangles.vertexStride = sizeof(glm::vec4);
@@ -27,16 +27,19 @@ void AccelerationStructure::CreateBLASes(Scene * _current_scene)
     triangles.transformData = {};
     triangles.maxVertex =
         uint32_t(scene_data.vertex_buffer.size / sizeof(glm::vec4)) -
-        1;  // the highest index of a vertex that will be addressed by a build command using this structure.
-    for (auto& drawcall : scene_data.drawcalls)
+        1; // the highest index of a vertex that will be addressed by a build command using this structure.
+    for (auto &drawcall : scene_data.drawcalls)
     {
         // Create geometry
         vk::AccelerationStructureGeometryKHR asGeom{};
         asGeom.geometryType = vk::GeometryTypeKHR::eTriangles;
-        asGeom.flags = vk::GeometryFlagBitsKHR::eOpaque;
+
+        // asGeom.flags = vk::GeometryFlagBitsKHR::eOpaque;
+        asGeom.flags = vk::GeometryFlagBitsKHR{}; // no opaque flag — allow any-hit to run
+        
         asGeom.geometry.triangles = triangles;
         vk::AccelerationStructureBuildRangeInfoKHR offset{};
-        offset.primitiveCount = drawcall.index_count / 3;  // The number of triangles
+        offset.primitiveCount = drawcall.index_count / 3; // The number of triangles
         offset.firstVertex = drawcall.vertex_offset;
         offset.primitiveOffset = drawcall.first_index * sizeof(uint32_t);
         offset.transformOffset = 0;
@@ -50,10 +53,10 @@ void AccelerationStructure::CreateBLASes(Scene * _current_scene)
         auto build_sizes = context.device.getAccelerationStructureBuildSizesKHR(
             vk::AccelerationStructureBuildTypeKHR::eDevice, buildInfo, (uint32_t)scene_data.index_buffer.size / sizeof(uint32_t));
         // Allocate scratch buffer
-        // NOTE: On the 4090, the obtained address was suddenly not aligned properly, so have to do that manually. 
+        // NOTE: On the 4090, the obtained address was suddenly not aligned properly, so have to do that manually.
         uint32_t scratch_alignment =
             context.acceleration_structure_properties.minAccelerationStructureScratchOffsetAlignment;
-        uint32_t aligned_size = (uint32_t )build_sizes.buildScratchSize + scratch_alignment;
+        uint32_t aligned_size = (uint32_t)build_sizes.buildScratchSize + scratch_alignment;
 
         BufferUtils::Buffer scratch_buffer =
             buffer_utils.CreateBuffer(aligned_size, vk::BufferUsageFlagBits::eStorageBuffer);
@@ -68,11 +71,10 @@ void AccelerationStructure::CreateBLASes(Scene * _current_scene)
 
         buildInfo.scratchData.deviceAddress =
             ((scratch_buffer.device_address / scratch_alignment) + 1) * scratch_alignment;
-   
+
         auto command_buffer = context.BeginSingleTimeCommands();
         command_buffer.buildAccelerationStructuresKHR(buildInfo, &offset);
         vk::MemoryBarrier barrier;
-
 
         barrier.srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR;
         barrier.dstAccessMask = vk::AccessFlagBits::eAccelerationStructureReadKHR;
@@ -85,25 +87,26 @@ void AccelerationStructure::CreateBLASes(Scene * _current_scene)
     }
 }
 
-void AccelerationStructure::DestroyBLASes() 
-{ 
+void AccelerationStructure::DestroyBLASes()
+{
     // Should have a nicer way to find uninitialized
-    if (BLASes.size() == 0) return; 
+    if (BLASes.size() == 0)
+        return;
     buffer_utils.DestroyBuffer(object_info_buffer);
-    for (auto& b : BLAS_buffers)
+    for (auto &b : BLAS_buffers)
         buffer_utils.DestroyBuffer(b);
     BLAS_buffers.clear();
-    for (auto& b : BLASes)
+    for (auto &b : BLASes)
         context.device.destroyAccelerationStructureKHR(b);
     BLASes.clear();
 }
 
-void AccelerationStructure::CreateTLAS(uint32_t swap_idx) 
+void AccelerationStructure::CreateTLAS(uint32_t swap_idx)
 {
     ///////////////////////////////////////////////////////////////////////
     // Create top level acceleration structure
     ///////////////////////////////////////////////////////////////////////
-    auto ToTransform = [](const glm::mat4& M)
+    auto ToTransform = [](const glm::mat4 &M)
     {
         const glm::mat4 T = glm::transpose(M);
         vk::TransformMatrixKHR tfm;
@@ -115,48 +118,48 @@ void AccelerationStructure::CreateTLAS(uint32_t swap_idx)
                             current_scene->entity_manager.CountEntitiesWithComponents<DynamicRenderable>();
 
     std::vector<vk::AccelerationStructureInstanceKHR> as_instances(num_objects);
-    int ctr = 0; 
+    int ctr = 0;
     std::vector<ObjectInfo> object_infos(num_objects * 2);
-    auto AddInstance = [&](uint32_t blas_idx, glm::mat4 & model_matrix)
-    {       
+    auto AddInstance = [&](uint32_t blas_idx, glm::mat4 &model_matrix)
+    {
         vk::AccelerationStructureInstanceKHR instance{};
         instance.transform = ToTransform(model_matrix);
         instance.instanceCustomIndex = ctr;
         const auto blas = BLASes[blas_idx];
-        vk::AccelerationStructureDeviceAddressInfoKHR address_info; 
+        vk::AccelerationStructureDeviceAddressInfoKHR address_info;
         address_info.accelerationStructure = BLASes[blas_idx];
         instance.accelerationStructureReference = context.device.getAccelerationStructureAddressKHR(address_info);
 
         // WHAT'S HAPPENING BELOW!?  Why suddenly a VK flag?
-        //instance.flags =
+        // instance.flags =
         //    VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;  // vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable;
 
         instance.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleCullDisable);
         instance.mask = 0xFF;
         instance.instanceShaderBindingTableRecordOffset = 0;
         as_instances[ctr++] = instance;
-    };    
- 
-    for (auto& e : current_scene->entity_manager.EntitiesWithComponents<StaticRenderable>())
+    };
+
+    for (auto &e : current_scene->entity_manager.EntitiesWithComponents<StaticRenderable>())
     {
         glm::mat4 model_matrix = e.GetComponent<StaticRenderable>()->GetModelMatrix();
         auto blas_idx = scene_data.asset_drawcall_idx[std::make_pair(e.GetComponent<StaticRenderable>()->asset, e.GetComponent<StaticRenderable>()->variation)];
         object_infos[ctr].starting_primitive = scene_data.drawcalls[blas_idx].first_index / 3;
         object_infos[ctr].starting_vertex = scene_data.drawcalls[blas_idx].vertex_offset;
-        object_infos[ctr].model_matrix = model_matrix; 
-        object_infos[ctr].is_static = true; 
+        object_infos[ctr].model_matrix = model_matrix;
+        object_infos[ctr].is_static = true;
         AddInstance(blas_idx, model_matrix);
     }
-    for (auto& e : current_scene->entity_manager.EntitiesWithComponents<DynamicRenderable>())
+    for (auto &e : current_scene->entity_manager.EntitiesWithComponents<DynamicRenderable>())
     {
-        const auto& dr = e.GetComponent<DynamicRenderable>();
+        const auto &dr = e.GetComponent<DynamicRenderable>();
         glm::mat4 model_matrix = dr->GetCurrentAndSetPreviousModelMatrix();
         auto blas_idx = scene_data.asset_drawcall_idx[std::make_pair(e.GetComponent<DynamicRenderable>()->asset, e.GetComponent<DynamicRenderable>()->variation)];
         object_infos[ctr].starting_primitive = scene_data.drawcalls[blas_idx].first_index / 3;
         object_infos[ctr].starting_vertex = scene_data.drawcalls[blas_idx].vertex_offset;
         object_infos[ctr].model_matrix = model_matrix;
         object_infos[ctr].prev_model_matrix = dr->prev_model_matrix;
-        object_infos[ctr].is_static = false; 
+        object_infos[ctr].is_static = false;
         AddInstance(blas_idx, model_matrix);
     }
 
@@ -167,7 +170,8 @@ void AccelerationStructure::CreateTLAS(uint32_t swap_idx)
 
     if (num_objects > (object_info_buffer.size / sizeof(ObjectInfo)))
     {
-        if (object_info_buffer.size > 0) buffer_utils.DestroyBuffer(object_info_buffer);
+        if (object_info_buffer.size > 0)
+            buffer_utils.DestroyBuffer(object_info_buffer);
         object_info_buffer = buffer_utils.CreateBuffer(
             object_infos, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
     }
@@ -229,7 +233,7 @@ void AccelerationStructure::CreateTLAS(uint32_t swap_idx)
         aligned_size, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
 
     // Update build information
-    buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;  // update ? m_tlas.accel : VK_NULL_HANDLE;
+    buildInfo.srcAccelerationStructure = VK_NULL_HANDLE; // update ? m_tlas.accel : VK_NULL_HANDLE;
     buildInfo.dstAccelerationStructure = tlas_data[swap_idx].TLAS;
 
     buildInfo.scratchData.deviceAddress =
@@ -247,15 +251,14 @@ void AccelerationStructure::CreateTLAS(uint32_t swap_idx)
     buffer_utils.DestroyBuffer(instance_buffer);
     buffer_utils.DestroyBuffer(tlas_scratch_buffer);
 
-    tlas_data[swap_idx].created = true; 
+    tlas_data[swap_idx].created = true;
 }
 
-void AccelerationStructure::DestroyTLAS(uint32_t swap_idx) 
+void AccelerationStructure::DestroyTLAS(uint32_t swap_idx)
 {
-    if (!tlas_data[swap_idx].created) return; 
+    if (!tlas_data[swap_idx].created)
+        return;
     buffer_utils.DestroyBuffer(tlas_data[swap_idx].buffer);
 
     context.device.destroyAccelerationStructureKHR(tlas_data[swap_idx].TLAS);
 }
-
-

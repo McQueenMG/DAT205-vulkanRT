@@ -169,6 +169,11 @@ void Context::Create(GLFWwindow* _glfw_window)
         vk::PhysicalDeviceAccelerationStructureFeaturesKHR accel_features{};
         accel_features.pNext = &raytracing_features;
         vk::PhysicalDeviceVulkan12Features vulkan12features{};
+        vulkan12features.descriptorIndexing = VK_TRUE;
+        vulkan12features.runtimeDescriptorArray = VK_TRUE;
+        vulkan12features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+        vulkan12features.descriptorBindingPartiallyBound = VK_TRUE;
+        vulkan12features.descriptorBindingVariableDescriptorCount = VK_TRUE;
         vulkan12features.pNext = &accel_features;
         vk::PhysicalDeviceFeatures2 physical_device_features_2{};
         physical_device_features_2.pNext = &vulkan12features;

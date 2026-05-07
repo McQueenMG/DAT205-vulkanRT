@@ -51,6 +51,7 @@ add_library(vulkan_rt_renderer
     vulkan_rt_renderer.cpp
     shaders/raytrace.rgen
     shaders/raytrace.rchit
+    shaders/raytrace.rahit
     shaders/raytrace.rmiss
     shaders/blit.vert
     shaders/blit.frag

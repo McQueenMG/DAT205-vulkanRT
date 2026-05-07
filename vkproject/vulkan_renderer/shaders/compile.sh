@@ -1,6 +1,7 @@
 glslc --target-spv=spv1.5 raytrace.rgen -o ../../../shaders/raytrace.rgen.bin
 glslc --target-spv=spv1.5 raytrace.rchit -o ../../../shaders/raytrace.rchit.bin
 glslc --target-spv=spv1.5 raytrace.rmiss -o ../../../shaders/raytrace.rmiss.bin
+glslc --target-spv=spv1.5 raytrace.rahit -o ../../../shaders/raytrace.rahit.bin
 glslc --target-spv=spv1.5 standard.vert -o ../../../shaders/standard.vert.bin
 glslc --target-spv=spv1.5 standard.frag -o ../../../shaders/standard.frag.bin
 glslc --target-spv=spv1.5 blit.vert -o ../../../shaders/blit.vert.bin

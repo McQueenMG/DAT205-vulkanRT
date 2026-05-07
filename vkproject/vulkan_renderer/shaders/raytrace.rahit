@@ -1,0 +1,87 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_nonuniform_qualifier : enable
+#include "common.glsl"
+
+hitAttributeEXT vec2 attribs;
+
+layout(location = 0) rayPayloadInEXT hitPayload prd;
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+
+layout(std430, set = 0, binding = 1) buffer ObjectInfo_
+{
+    ObjectInfo object_info[];
+};
+layout(std430, set = 0, binding = 2) buffer MaterialIndices
+{
+    uint material_indices[];
+};
+layout(std430, set = 0, binding = 3) buffer Indices
+{
+    uint indices[];
+};
+layout(std430, set = 0, binding = 5) buffer UVs
+{
+    vec2 uvs[];
+};
+layout(std430, set = 0, binding = 6) buffer Materials
+{
+    Material materials[];
+};
+
+layout(set = 0, binding = 10) uniform sampler2D material_textures[256];
+
+void main()
+{
+    // Barycentrics from triangle hit attributes
+    vec3 barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
+
+    uint prim_base = object_info[gl_InstanceCustomIndexEXT].starting_primitive + gl_PrimitiveID;
+    uint index_offset = prim_base * 3u;
+    uvec3 idx = uvec3(indices[index_offset + 0u], indices[index_offset + 1u], indices[index_offset + 2u])
+                + uvec3(object_info[gl_InstanceCustomIndexEXT].starting_vertex);
+
+    uvec3 uv_idx = uvec3(index_offset + 0u, index_offset + 1u, index_offset + 2u);
+    vec2 uv0 = uvs[uv_idx.x];
+    vec2 uv1 = uvs[uv_idx.y];
+    vec2 uv2 = uvs[uv_idx.z];
+    vec2 uv = barycentrics.x * uv0 + barycentrics.y * uv1 + barycentrics.z * uv2;
+    uint matId = material_indices[prim_base];
+
+    // Apply per-material UV flips
+    if (materials[matId].flip_uv_x != 0) uv.x = 1.0 - uv.x;
+    if (materials[matId].flip_uv_y != 0) uv.y = 1.0 - uv.y;
+
+    // read diffuse texture index from Materials buffer if you prefer,
+    // but easier is to have Materials accessible (like in raygen). If not, store texture index in separate buffer.
+    // Here we assume shader can access the material via binding 6 (same as raygen).
+    // If Materials binding isn't visible here, copy the index into a small separate buffer on CPU.
+    // For safety, sample texture only when valid index present:
+    // Use nonuniformEXT on the index if necessary.
+
+    // read diffuse index via Materials buffer (same binding/layout as raygen)
+    // layout(std430, set=0, binding=6) buffer Materials { Material materials[]; };
+    // int texIdx = materials[matId].diffuse_texture_index;
+
+    // If you don't have Materials here, use a prefilled material_indices->texIdx mapping buffer instead.
+    // For this project assume material_indices contains material ids and Materials buffer is available:
+
+    int texIdx = int(materials[matId].diffuse_texture_index);
+    
+    if (texIdx >= 0 && texIdx < 256)
+    {
+        float a = texture(material_textures[nonuniformEXT(uint(texIdx))], uv).a;
+        
+        // DEBUG: output to see what's happening
+        // vec3 debugColor = vec3(a); // visualize alpha
+        if (a < 0.5)
+        {
+            // Transparent — reject
+            ignoreIntersectionEXT;
+        }
+        else
+        {
+            // Opaque — continue to closest-hit (which will set the color)
+        }
+    }
+}

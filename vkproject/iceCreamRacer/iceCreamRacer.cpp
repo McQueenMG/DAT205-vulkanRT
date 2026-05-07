@@ -56,14 +56,23 @@ public:
         const std::filesystem::path vkproject_root = source_path.parent_path().parent_path();
         const std::filesystem::path car_obj_path = vkproject_root / "triangleObjects/ice_cream_car/ice_cream_car.obj";
 
+
+
         auto car_mesh = triangle_asset::LoadObjMesh(car_obj_path.string());
         car_mesh = triangle_asset::NormalizeTriangleMesh(car_mesh);
         car_mesh = triangle_asset::OrientTriangleMeshOutwards(car_mesh);
+
+        glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        for (auto &v : car_mesh.vertices) {
+            glm::vec4 p = rot * glm::vec4(v, 1.0f);
+            v = glm::vec3(p);
+        }
+
         auto registered_car = asset_manager->RegisterMeshAsset("ice_cream_car_demo", car_mesh);
         car_asset_id = registered_car.asset_id;
 
         Material floor_material{};
-        floor_material.color = glm::vec3(0.13f, 0.15f, 0.17f);
+        floor_material.color = glm::vec4(0.13f, 0.15f, 0.17f, 1.0f);
         floor_material.emittance = 0.0f;
         floor_material.metalness = 0.0f;
         floor_material.shininess = 0.0f;
@@ -81,7 +90,10 @@ public:
 
         // Light positioned above the scene — with -Z up, "above" means negative Z.
         auto& light_entity = entity_manager.Create();
-        light_entity.AddComponent<LightComponent>(glm::vec3(-6.0f, -10.0f, -10.0f), glm::vec3(240.0f, 220.0f, -200.0f));
+        light_entity.AddComponent<LightComponent>(glm::vec3(-6.0f, -10.0f, -10.0f), glm::vec3(340.0f, 320.0f, -300.0f));
+
+        auto& light_entity2 = entity_manager.Create();
+        light_entity2.AddComponent<LightComponent>(glm::vec3(-6.0f, 5.0f, -10.0f), glm::vec3(540.0f, 520.0f, -500.0f));
 
         used_assets = {car_asset_id, floor_asset_id};
     }

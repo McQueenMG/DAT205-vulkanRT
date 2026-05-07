@@ -18,7 +18,7 @@ namespace triangle_asset
         Material MakeDefaultMaterial()
         {
             Material material{};
-            material.color = glm::vec3(1.0f, 1.0f, 1.0f);
+            material.color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
             material.emittance = 0.0f;
             material.metalness = 0.0f;
             material.shininess = 0.0f;
@@ -27,16 +27,17 @@ namespace triangle_asset
 
         int ParseObjUVIndex(const std::string &token, int uv_count)
         {
-            const size_t slash_pos = token.find('/');
-            if (slash_pos == std::string::npos || slash_pos == token.size() - 1)
+            const size_t first_slash = token.find('/');
+            if (first_slash == std::string::npos)
             {
                 return -1;
             }
 
-            const std::string index_str = token.substr(slash_pos + 1);
+            const size_t second_slash = token.find('/', first_slash + 1);
+            const std::string index_str = token.substr(first_slash + 1, second_slash == std::string::npos ? std::string::npos : second_slash - first_slash - 1);
             if (index_str.empty())
             {
-                throw std::runtime_error("Malformed OBJ UV index");
+                return -1;
             }
 
             const int obj_index = std::stoi(index_str);
@@ -115,6 +116,11 @@ namespace triangle_asset
                     result.textures[current_name] = MaterialTextures();
                     continue;
                 }
+                if (prefix == "format")
+                {
+                    // OBS this format line needs to be added in the MTL file itself, it refers to if UVs should be flipped when sampled in the shader.
+                    line_stream >> result.materials[current_name].flip_uv_x >> result.materials[current_name].flip_uv_y;
+                }
 
                 if (current_name.empty())
                     continue;
@@ -128,7 +134,7 @@ namespace triangle_asset
                 }
                 else if (prefix == "Ka")
                 {
-                    if (material.color == glm::vec3(1.0f, 1.0f, 1.0f))
+                    if (material.color == glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
                     {
                         line_stream >> material.color.x >> material.color.y >> material.color.z;
                     }
@@ -245,8 +251,11 @@ namespace triangle_asset
         }
         centroid /= static_cast<float>(mesh.vertices.size());
 
-        for (auto &tri : mesh.indices)
+        size_t flipped_count = 0;
+
+        for (size_t i = 0; i < mesh.indices.size(); ++i) 
         {
+            glm::ivec3 &tri = mesh.indices[i];
             const glm::vec3 &v0 = mesh.vertices[tri.x];
             const glm::vec3 &v1 = mesh.vertices[tri.y];
             const glm::vec3 &v2 = mesh.vertices[tri.z];
@@ -255,9 +264,25 @@ namespace triangle_asset
 
             if (glm::dot(face_normal, face_center - centroid) < 0.0f)
             {
+                // Flip vertex winding order to fix inward-facing normal
                 std::swap(tri.y, tri.z);
+                
+                // MUST swap UV indices to match the new vertex order.
+                // When vertices are reordered, the barycentrics from the ray tracer
+                // will correspond to the new vertex positions. The UV indices must
+                // be reordered to match so they interpolate correctly with the
+                // new barycentric weights.
+                if (!mesh.uv_indices.empty() && i < mesh.uv_indices.size())
+                {
+                    std::swap(mesh.uv_indices[i].y, mesh.uv_indices[i].z);
+                }
+                
+                flipped_count++;
             }
+            
         }
+
+        LOG(INFO) << "OrientTriangleMeshOutwards: flipped " << flipped_count << " inward-facing triangles";
 
         return mesh;
     }
@@ -338,11 +363,15 @@ namespace triangle_asset
                         mesh_material_indices_by_name[current_material_name] = static_cast<uint32_t>(mesh.materials.size());
                         mesh.materials.push_back(mtl_result.materials[current_material_name]);
                         mesh.material_textures.push_back(mtl_result.textures[current_material_name]);
+                        LOG(VERBOSE) << "Added material '" << current_material_name << "' as material index " 
+                                     << mesh_material_indices_by_name[current_material_name];
                     }
                     current_material_index = mesh_material_indices_by_name[current_material_name];
+                    LOG(VERBOSE) << "usemtl: switching to '" << current_material_name << "' (index=" << current_material_index << ")";
                 }
                 else
                 {
+                    LOG(WARNING) << "Material '" << current_material_name << "' not found in MTL file";
                     current_material_index = 0;
                 }
                 continue;
@@ -362,7 +391,6 @@ namespace triangle_asset
                         throw std::runtime_error("OBJ face index out of range");
                     }
                     face_position_indices.push_back(pos_idx);
-
 
                     const int uv_idx = ParseObjUVIndex(vertex_token, static_cast<int>(mesh.uv_list.size()));
                     if (uv_idx >= 0)
@@ -389,6 +417,13 @@ namespace triangle_asset
                 }
             }
         }
+        if (mesh.uv_list.size() <= 5)
+        {
+            for (size_t i = 0; i < mesh.uv_list.size(); ++i)
+            {
+                LOG(INFO) << "UV[" << i << "] = (" << mesh.uv_list[i].x << ", " << mesh.uv_list[i].y << ")";
+            }
+        }
 
         if (mesh.materials.empty())
         {
@@ -402,6 +437,26 @@ namespace triangle_asset
             LOG(ERROR) << "OBJ file has no renderable geometry: " << filename << "\n";
             throw std::runtime_error("OBJ file has no renderable geometry");
         }
+
+        // Diagnostic: dump material and texture assignments
+        LOG(INFO) << "OBJ loaded with " << mesh.materials.size() << " materials:";
+        for (size_t i = 0; i < mesh.materials.size(); ++i)
+        {
+            LOG(INFO) << "  Material[" << i << "]: color=(" << mesh.materials[i].color.x << "," 
+                      << mesh.materials[i].color.y << "," << mesh.materials[i].color.z << ")";
+            if (i < mesh.material_textures.size())
+            {
+                LOG(INFO) << "    Texture[" << i << "]: has_diffuse=" << mesh.material_textures[i].has_diffuse
+                          << ", diffuse_map.size=" << mesh.material_textures[i].diffuse_map.data.size();
+            }
+        }
+        // Count material usage
+        std::map<uint32_t, int> mat_usage;
+        for (const auto &mid : mesh.material_indices)
+            mat_usage[mid]++;
+        LOG(INFO) << "Material usage in mesh:";
+        for (const auto &[mat_id, count] : mat_usage)
+            LOG(INFO) << "  Material[" << mat_id << "]: " << count << " faces";
 
         return mesh;
     }

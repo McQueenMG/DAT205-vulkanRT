@@ -1,6 +1,7 @@
 # MTL file - created by a modified js OBJExporter
 
 newmtl ice_cream_van
+format 0 0
 Tr 0.0000
 Tf 1.0000 1.0000 1.0000
 illum 1
@@ -17,6 +18,7 @@ map_Pr metalnessMap1.png
 norm normalMap1.png
 
 newmtl decals
+format 0 0
 Tr 0.0000
 Tf 1.0000 1.0000 1.0000
 illum 1
