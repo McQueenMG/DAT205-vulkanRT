@@ -13,9 +13,9 @@ Ka 1 1 1
 Kd 1 1 1
 Ke 0 0 0
 map_Kd ice_cream_van.png
-map_Pm metalnessMap1.png
-map_Pr metalnessMap1.png
-norm normalMap1.png
+map_Pm icecreamvan_metal_x2048.png
+map_Pr icecreamvan_rough_x2048.png
+norm icecreamvan_normal_x2048.png
 
 newmtl decals
 format 0 0

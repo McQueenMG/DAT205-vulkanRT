@@ -40,6 +40,5 @@ TextureMap LoadImage(const std::filesystem::path& image_path)
 	LOG(INFO) << "Loaded texture: " << image_path.string() << " (" << width << "x" << height << ")\n";
 	return texture;
 }
-
 }  // namespace triangle_asset
 
