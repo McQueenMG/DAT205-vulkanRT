@@ -23,7 +23,10 @@ void SceneData::Create(Scene *_current_scene)
     std::vector<glm::ivec3> all_indices;
     std::vector<glm::vec2> all_uvs;
     material_textures_cpu.clear();
-    material_textures_gpu.clear();
+    diffuse_textures_gpu.clear();
+    roughness_textures_gpu.clear();
+    metalness_textures_gpu.clear();
+    normal_textures_gpu.clear();
 
     for (auto &c : assets)
     {
@@ -106,12 +109,17 @@ void SceneData::Create(Scene *_current_scene)
             for (uint32_t i = 0; i < materials.size(); i++)
             {
                 materials[i].diffuse_texture_index = static_cast<int>(material_texture_base + i);
+                materials[i].roughness_texture_index = static_cast<int>(material_texture_base + i);
+                materials[i].metalness_texture_index = static_cast<int>(material_texture_base + i);
+                materials[i].normal_texture_index = static_cast<int>(material_texture_base + i);
                 if (materials[i].diffuse_texture_index < 0 || materials[i].diffuse_texture_index >= 256)
                 {
-                    LOG(ERROR) << "Clamping diffuse_texture_index " << materials[i].diffuse_texture_index << " -> 255 for material " << (all_materials.size() + i);
+                    LOG(ERROR) << "Clamping texture indices " << materials[i].diffuse_texture_index << " -> 255 for material " << (all_materials.size() + i);
                     materials[i].diffuse_texture_index = 255;
+                    materials[i].roughness_texture_index = 255;
+                    materials[i].metalness_texture_index = 255;
+                    materials[i].normal_texture_index = 255;
                 }
-                materials[i].normal_texture_index = -1;
                 all_materials.push_back(materials[i]);
             }
             if (asset_type != AssetManager::AssetType::Vox)
@@ -126,7 +134,7 @@ void SceneData::Create(Scene *_current_scene)
             else
             {
                 // Vox meshes have no textures, push defaults
-                for (int i = 0; i < materials.size(); ++i)
+                for (int i = 0; i < static_cast<int>(materials.size()); ++i)
                 {
                     material_textures_cpu.push_back(triangle_asset::MaterialTextures());
                 }
@@ -168,6 +176,22 @@ void SceneData::Create(Scene *_current_scene)
         }
     }
 
+    const size_t texture_count = std::max<size_t>(1, std::min<size_t>(material_textures_cpu.size(), 256));
+    int last_idx = static_cast<int>(texture_count - 1);
+    for (size_t mi = 0; mi < all_materials.size(); ++mi)
+    {
+        auto &mat = all_materials[mi];
+        if (mat.diffuse_texture_index < 0 || mat.diffuse_texture_index > last_idx)
+        {
+            LOG(WARNING) << "Remapping material " << mi << " tex index "
+                         << mat.diffuse_texture_index << " -> " << last_idx;
+            mat.diffuse_texture_index = last_idx;
+            mat.roughness_texture_index = last_idx;
+            mat.metalness_texture_index = last_idx;
+            mat.normal_texture_index = last_idx;
+        }
+    }
+
     // Diagnostic: dump material -> texture mapping and used material ids
     std::set<uint32_t> used_material_ids;
     for (auto id : all_material_indices)
@@ -188,7 +212,7 @@ void SceneData::Create(Scene *_current_scene)
     std::cout << "sizeof(Material)=" << sizeof(Material) << "\n";
     std::cout << "offsetof(color)=" << offsetof(Material, color) << "\n";
     std::cout << "offsetof(emittance)=" << offsetof(Material, emittance) << "\n";
-    std::cout << "offsetof(diffuse_texture_index)=" << offsetof(Material, diffuse_texture_index) << "\n";
+    std::cout << "offsetof(diffuse_texture_index)=" << offsetof(Material, diffuse_texture_index) << "\n"; 
 
     material_buffer = buffer_utils.CreateBuffer(
         all_materials, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
@@ -204,26 +228,25 @@ void SceneData::Create(Scene *_current_scene)
     LOG(INFO) << "=== Material Assignment Diagnostic ===";
     LOG(INFO) << "Total triangles: " << all_material_indices.size();
     LOG(INFO) << "Total unique materials: " << all_materials.size();
-    
+
     // Count material usage
     std::map<uint32_t, size_t> mat_tri_count;
     std::map<uint32_t, glm::vec3> mat_avg_center;
     std::map<uint32_t, float> mat_min_z;
     std::map<uint32_t, float> mat_max_z;
     std::map<uint32_t, std::vector<glm::vec3>> mat_tri_centers;
-    
+
     for (size_t tri = 0; tri < all_material_indices.size(); ++tri)
     {
         uint32_t mat_id = all_material_indices[tri];
         mat_tri_count[mat_id]++;
-        
+
         // Compute triangle center for spatial analysis
-        glm::vec3 tri_center = (
-            glm::vec3(all_vertices[all_indices[tri].x]) +
-            glm::vec3(all_vertices[all_indices[tri].y]) +
-            glm::vec3(all_vertices[all_indices[tri].z])
-        ) / 3.0f;
-        
+        glm::vec3 tri_center = (glm::vec3(all_vertices[all_indices[tri].x]) +
+                                glm::vec3(all_vertices[all_indices[tri].y]) +
+                                glm::vec3(all_vertices[all_indices[tri].z])) /
+                               3.0f;
+
         if (mat_avg_center.find(mat_id) == mat_avg_center.end())
         {
             mat_avg_center[mat_id] = glm::vec3(0.0f);
@@ -234,23 +257,6 @@ void SceneData::Create(Scene *_current_scene)
         mat_min_z[mat_id] = std::min(mat_min_z[mat_id], tri_center.z);
         mat_max_z[mat_id] = std::max(mat_max_z[mat_id], tri_center.z);
         mat_tri_centers[mat_id].push_back(tri_center);
-    }
-    
-    // Normalize average centers and log
-    LOG(INFO) << "Material usage (count | avg_position | Z_range | texture_index):";
-    for (const auto &[mat_id, count] : mat_tri_count)
-    {
-        if (count > 0)
-        {
-            mat_avg_center[mat_id] /= static_cast<float>(count);
-            int tex_idx = all_materials[mat_id].diffuse_texture_index;
-            float z_range = mat_max_z[mat_id] - mat_min_z[mat_id];
-            LOG(INFO) << "  Mat[" << mat_id << "]: " << count << " triangles | "
-                      << "center=(" << mat_avg_center[mat_id].x << ", " 
-                      << mat_avg_center[mat_id].y << ", " << mat_avg_center[mat_id].z << ") | "
-                      << "Z[" << mat_min_z[mat_id] << " to " << mat_max_z[mat_id] << "] (range=" << z_range << ") | "
-                      << "texture_index=" << tex_idx;
-        }
     }
 
     int probeMat = 2; // change to the material id you saw missing a diffuse
@@ -278,15 +284,37 @@ void SceneData::Create(Scene *_current_scene)
         else
             ++tri_valid_uv;
     }
-    LOG(INFO) << "UV coverage: " << tri_valid_uv << " triangles with valid UVs, " 
+    LOG(INFO) << "UV coverage: " << tri_valid_uv << " triangles with valid UVs, "
               << tri_zero_uv << " with zero UVs";
 
-    UploadMaterialTextures(material_textures_cpu);
+    LOG(INFO) << "Before UploadMaterialTextures:";
+    for (size_t i = 0; i < std::min(size_t(5), all_materials.size()); ++i)
+    {
+        LOG(INFO) << "  Material[" << i << "]: "
+                  << "diffuse_idx=" << all_materials[i].diffuse_texture_index
+                  << ", roughness_idx=" << all_materials[i].roughness_texture_index
+                  << ", metalness_idx=" << all_materials[i].metalness_texture_index
+                  << ", shininess=" << all_materials[i].shininess;
+
+        if (i < material_textures_cpu.size())
+        {
+            LOG(INFO) << "    MaterialTextures[" << i << "]: "
+                      << "has_diffuse=" << material_textures_cpu[i].has_diffuse
+                      << ", has_roughness=" << material_textures_cpu[i].has_roughness
+                      << ", has_metalness=" << material_textures_cpu[i].has_metalness;
+        }
+    }
+
+    UploadMaterialTextures();
 }
 
-void SceneData::UploadMaterialTextures(const std::vector<triangle_asset::MaterialTextures> &cpu_textures)
+void SceneData::UploadMaterialTextures()
 {
-    material_textures_gpu.resize(cpu_textures.size());
+    const size_t texture_count = std::max<size_t>(1, std::min<size_t>(material_textures_cpu.size(), 256));
+    diffuse_textures_gpu.resize(texture_count);
+    roughness_textures_gpu.resize(texture_count);
+    metalness_textures_gpu.resize(texture_count);
+    normal_textures_gpu.resize(texture_count);
 
     triangle_asset::TextureMap white_texture;
     white_texture.data = {255, 255, 255, 255};
@@ -294,82 +322,104 @@ void SceneData::UploadMaterialTextures(const std::vector<triangle_asset::Materia
     white_texture.height = 1;
     white_texture.channels = 4;
 
-    int fallback_count = 0, actual_count = 0;
+    triangle_asset::TextureMap roughness_fallback_texture;
+    roughness_fallback_texture.data = {255, 255, 255, 255}; // 1.0 = very rough/matte
+    roughness_fallback_texture.width = 1;
+    roughness_fallback_texture.height = 1;
+    roughness_fallback_texture.channels = 4;
 
-    for (uint32_t mat_idx = 0; mat_idx < cpu_textures.size(); ++mat_idx)
+    triangle_asset::TextureMap black_texture;
+    black_texture.data = {0, 0, 0, 255};
+    black_texture.width = 1;
+    black_texture.height = 1;
+    black_texture.channels = 4;
+
+    triangle_asset::TextureMap flat_normal_texture;
+    flat_normal_texture.data = {128, 128, 255, 255};
+    flat_normal_texture.width = 1;
+    flat_normal_texture.height = 1;
+    flat_normal_texture.channels = 4;
+
+    const triangle_asset::MaterialTextures empty_material_textures{};
+
+    auto upload_texture_array = [&](auto map_member, auto flag_member, std::vector<MaterialTextureGPU> &gpu_textures,
+                                    const triangle_asset::TextureMap &fallback_texture, const char *label)
     {
-        const auto &cpu_tex = cpu_textures[mat_idx];
-        auto &gpu_tex = material_textures_gpu[mat_idx];
+        int fallback_count = 0;
+        int actual_count = 0;
 
-        const auto &tex_map = (cpu_tex.has_diffuse && !cpu_tex.diffuse_map.data.empty()) ? cpu_tex.diffuse_map : white_texture;
-        const uint32_t tex_size = static_cast<uint32_t>(tex_map.data.size());
-
-        // Create staging buffer
-        vk::BufferCreateInfo staging_info;
-        staging_info.size = tex_size;
-        staging_info.usage = vk::BufferUsageFlagBits::eTransferSrc;
-        vma::AllocationCreateInfo staging_alloc;
-        staging_alloc.usage = vma::MemoryUsage::eAuto;
-        staging_alloc.flags = vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eMapped;
-        vma::AllocationInfo staging_alloc_info;
-        auto [staging_buf, staging_alloc_handle] = context.allocator.createBuffer(staging_info, staging_alloc, staging_alloc_info);
-        memcpy(staging_alloc_info.pMappedData, tex_map.data.data(), tex_size);
-
-        // Create VkImage
-        vk::ImageCreateInfo img_info;
-        img_info.imageType = vk::ImageType::e2D;
-        img_info.extent = vk::Extent3D(tex_map.width, tex_map.height, 1);
-        img_info.mipLevels = 1;
-        img_info.arrayLayers = 1;
-        img_info.format = vk::Format::eR8G8B8A8Unorm;
-        img_info.tiling = vk::ImageTiling::eOptimal;
-        img_info.initialLayout = vk::ImageLayout::eUndefined;
-        img_info.usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled;
-        img_info.samples = vk::SampleCountFlagBits::e1;
-        img_info.sharingMode = vk::SharingMode::eExclusive;
-
-        vma::AllocationCreateInfo img_alloc;
-        img_alloc.usage = vma::MemoryUsage::eAuto;
-        img_alloc.flags = vma::AllocationCreateFlagBits::eDedicatedMemory;
-
-        std::tie(gpu_tex.image, gpu_tex.allocation) = context.allocator.createImage(img_info, img_alloc);
-
-        // Upload: transition → copy → transition
-        texture_utils.TransitionImageLayout(gpu_tex.image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
-        texture_utils.CopyBufferToImage(staging_buf, gpu_tex.image, tex_map.width, tex_map.height);
-        texture_utils.TransitionImageLayout(gpu_tex.image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
-
-        // Create ImageView
-        vk::ImageViewCreateInfo view_info;
-        view_info.image = gpu_tex.image;
-        view_info.viewType = vk::ImageViewType::e2D;
-        view_info.format = vk::Format::eR8G8B8A8Unorm;
-        view_info.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-        view_info.subresourceRange.baseArrayLayer = 0;
-        view_info.subresourceRange.layerCount = 1;
-        view_info.subresourceRange.baseMipLevel = 0;
-        view_info.subresourceRange.levelCount = 1;
-        gpu_tex.image_view = context.device.createImageView(view_info);
-
-        if (cpu_tex.has_diffuse && !cpu_tex.diffuse_map.data.empty())
+        for (uint32_t mat_idx = 0; mat_idx < texture_count; ++mat_idx)
         {
-            actual_count++;
-            LOG(INFO) << "Material " << mat_idx << ": actual texture " << tex_map.width << "x" << tex_map.height 
-                      << " (" << tex_map.channels << " channels), size=" << tex_map.data.size();
-            // Log first pixel RGBA
-            if (tex_map.data.size() >= 4)
-                LOG(INFO) << "  First pixel RGBA: " << (int)tex_map.data[0] << "," << (int)tex_map.data[1] 
-                          << "," << (int)tex_map.data[2] << "," << (int)tex_map.data[3];
-        }
-        else
-        {
-            fallback_count++;
+            const auto &cpu_tex = (mat_idx < material_textures_cpu.size()) ? material_textures_cpu[mat_idx] : empty_material_textures;
+            auto &gpu_tex = gpu_textures[mat_idx];
+
+            const auto &tex_map = ((cpu_tex.*flag_member) && !(cpu_tex.*map_member).data.empty()) ? (cpu_tex.*map_member) : fallback_texture;
+            const uint32_t tex_size = static_cast<uint32_t>(tex_map.data.size());
+
+            vk::BufferCreateInfo staging_info;
+            staging_info.size = tex_size;
+            staging_info.usage = vk::BufferUsageFlagBits::eTransferSrc;
+            vma::AllocationCreateInfo staging_alloc;
+            staging_alloc.usage = vma::MemoryUsage::eAuto;
+            staging_alloc.flags = vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eMapped;
+            vma::AllocationInfo staging_alloc_info;
+            auto [staging_buf, staging_alloc_handle] = context.allocator.createBuffer(staging_info, staging_alloc, staging_alloc_info);
+            memcpy(staging_alloc_info.pMappedData, tex_map.data.data(), tex_size);
+
+            vk::ImageCreateInfo img_info;
+            img_info.imageType = vk::ImageType::e2D;
+            img_info.extent = vk::Extent3D(tex_map.width, tex_map.height, 1);
+            img_info.mipLevels = 1;
+            img_info.arrayLayers = 1;
+            img_info.format = vk::Format::eR8G8B8A8Unorm;
+            img_info.tiling = vk::ImageTiling::eOptimal;
+            img_info.initialLayout = vk::ImageLayout::eUndefined;
+            img_info.usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled;
+            img_info.samples = vk::SampleCountFlagBits::e1;
+            img_info.sharingMode = vk::SharingMode::eExclusive;
+
+            vma::AllocationCreateInfo img_alloc;
+            img_alloc.usage = vma::MemoryUsage::eAuto;
+            img_alloc.flags = vma::AllocationCreateFlagBits::eDedicatedMemory;
+
+            std::tie(gpu_tex.image, gpu_tex.allocation) = context.allocator.createImage(img_info, img_alloc);
+
+            texture_utils.TransitionImageLayout(gpu_tex.image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+            texture_utils.CopyBufferToImage(staging_buf, gpu_tex.image, tex_map.width, tex_map.height);
+            texture_utils.TransitionImageLayout(gpu_tex.image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+            vk::ImageViewCreateInfo view_info;
+            view_info.image = gpu_tex.image;
+            view_info.viewType = vk::ImageViewType::e2D;
+            view_info.format = vk::Format::eR8G8B8A8Unorm;
+            view_info.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+            view_info.subresourceRange.baseArrayLayer = 0;
+            view_info.subresourceRange.layerCount = 1;
+            view_info.subresourceRange.baseMipLevel = 0;
+            view_info.subresourceRange.levelCount = 1;
+            gpu_tex.image_view = context.device.createImageView(view_info);
+
+            if ((cpu_tex.*flag_member) && !(cpu_tex.*map_member).data.empty())
+            {
+                actual_count++;
+                LOG(INFO) << label << " material " << mat_idx << ": actual texture " << tex_map.width << "x" << tex_map.height
+                          << " (" << tex_map.channels << " channels), size=" << tex_map.data.size();
+            }
+            else
+            {
+                fallback_count++;
+            }
+
+            context.allocator.destroyBuffer(staging_buf, staging_alloc_handle);
         }
 
-        // Clean up staging
-        context.allocator.destroyBuffer(staging_buf, staging_alloc_handle);
-    }
-    LOG(INFO) << "Loaded " << actual_count << " actual textures, " << fallback_count << " fallback white textures";
+        LOG(INFO) << "Loaded " << actual_count << " actual " << label << " textures, " << fallback_count << " fallback textures";
+    };
+
+    upload_texture_array(&triangle_asset::MaterialTextures::diffuse_map, &triangle_asset::MaterialTextures::has_diffuse, diffuse_textures_gpu, white_texture, "diffuse");
+    upload_texture_array(&triangle_asset::MaterialTextures::roughness_map, &triangle_asset::MaterialTextures::has_roughness, roughness_textures_gpu, roughness_fallback_texture, "roughness");
+    upload_texture_array(&triangle_asset::MaterialTextures::metalness_map, &triangle_asset::MaterialTextures::has_metalness, metalness_textures_gpu, black_texture, "metalness");
+    upload_texture_array(&triangle_asset::MaterialTextures::normal_map, &triangle_asset::MaterialTextures::has_normal, normal_textures_gpu, flat_normal_texture, "normal");
 }
 
 void SceneData::Destroy()
@@ -377,16 +427,23 @@ void SceneData::Destroy()
     drawcalls.clear();
     asset_drawcall_idx.clear();
 
-    // Destroy textures
-    for (auto &gpu_tex : material_textures_gpu)
+    auto destroy_texture_vec = [&](std::vector<MaterialTextureGPU> &textures)
     {
-        if (gpu_tex.image)
+        for (auto &gpu_tex : textures)
         {
-            context.device.destroyImageView(gpu_tex.image_view);
-            context.allocator.destroyImage(gpu_tex.image, gpu_tex.allocation);
+            if (gpu_tex.image)
+            {
+                context.device.destroyImageView(gpu_tex.image_view);
+                context.allocator.destroyImage(gpu_tex.image, gpu_tex.allocation);
+            }
         }
-    }
-    material_textures_gpu.clear();
+        textures.clear();
+    };
+
+    destroy_texture_vec(diffuse_textures_gpu);
+    destroy_texture_vec(roughness_textures_gpu);
+    destroy_texture_vec(metalness_textures_gpu);
+    destroy_texture_vec(normal_textures_gpu);
 
     buffer_utils.DestroyBuffer(material_index_buffer);
     buffer_utils.DestroyBuffer(index_buffer);

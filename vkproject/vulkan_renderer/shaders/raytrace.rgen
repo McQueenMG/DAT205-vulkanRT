@@ -31,7 +31,10 @@ layout(std430, set = 0, binding = 9) buffer Lights
 {
     Light lights[];
 };
-layout(set = 0, binding = 10) uniform sampler2D material_textures[256];
+layout(set = 0, binding = 10) uniform sampler2D diffuse_textures[256];
+layout(set = 0, binding = 11) uniform sampler2D roughness_textures[256];
+layout(set = 0, binding = 12) uniform sampler2D metalness_textures[256];
+layout(set = 0, binding = 13) uniform sampler2D normal_textures[256];
 
 
 vec3 Environment(vec3 d)
@@ -67,22 +70,34 @@ bool ShadowRay(vec3 p0, vec3 n, vec3 p1)
     return prd.hit; 
 }
 
-vec3 CalculateDirectIllumination(vec3 p, vec3 wo, vec3 n, Material mat)
+vec3 CalculateDirectIllumination(vec3 p, vec3 wo, vec3 n, vec3 base_color, float roughness, float metalness)
 {
   vec3 final_color = vec3(0.0);
+  vec3 diffuse_color = base_color * (1.0 - metalness);
+  vec3 f0 = mix(vec3(0.04), base_color, metalness);
+  float specular_power = mix(512.0, 8.0, clamp(roughness, 0.0, 1.0));
   for(int i=0; i<push_constants.num_lights; i++)
   {    
     vec3 wi = normalize(lights[i].position - p);
     float r = length(lights[i].position - p);
-    vec3 brdf = mat.color.xyz * (1.0 / PI); 
     if(!ShadowRay(p, n, lights[i].position)) 
     {
       vec3 L = lights[i].intensity * (1.0 / (r * r));
-      final_color += L * max(dot(n, wi), 0.0) * brdf; 
+      vec3 h = normalize(wi + wo);
+      float ndotl = max(dot(n, wi), 0.0);
+      float ndoth = max(dot(n, h), 0.0);
+      vec3 diffuse_term = diffuse_color * (1.0 / PI);
+      vec3 specular_term = f0 * pow(ndoth, specular_power);
+      final_color += L * ndotl * (diffuse_term + specular_term);
     }
   }
-  final_color += mat.emittance * 10.0 * mat.color.xyz;
   return final_color;
+}
+
+float ShininessToRoughness(float s)
+{
+    s = max(s, 0.0);
+    return clamp(pow(2.0 / (s + 2.0), 0.25), 0.05, 1.0);
 }
 
 
@@ -106,28 +121,26 @@ void main()
   if(prd.hit) {
     hitPayload ch_prd = prd; 
     Material shaded_material = materials[ch_prd.mat_id];
-    //vec3 baseColor = shaded_material.color.xyz * texture(material_textures[nonuniformEXT(shaded_material.diffuse_texture_index)], ch_prd.uv).rgb;
-
-
-    int texIdx = shaded_material.diffuse_texture_index;
     vec3 albedo = shaded_material.color.xyz;
-    if (texIdx >= 0 && texIdx < 256) {
-    vec3 texColor = texture(material_textures[nonuniformEXT(uint(texIdx))], ch_prd.uv).rgb;
-    albedo *= texColor;
+    if (shaded_material.diffuse_texture_index >= 0 && shaded_material.diffuse_texture_index < 256)
+    {
+      albedo *= texture(diffuse_textures[nonuniformEXT(uint(shaded_material.diffuse_texture_index))], ch_prd.uv).rgb;
     }
-    // Use the textured albedo for lighting calculations
-    shaded_material.color.xyz = albedo;
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Direct illumination
-    ///////////////////////////////////////////////////////////////////////////
-    bool is_metal = shaded_material.metalness > 0.5; 
-    bool is_glass = shaded_material.metalness < 0.0; 
-    bool is_diffuse = !is_glass && shaded_material.shininess == 0.0; 
-    bool is_perfect_specular = is_glass || shaded_material.shininess < 0.0; 
-    float R0 = (is_metal && !is_glass) ? 0.9 : 0.1;     
-    vec3 final_color = shaded_material.color.xyz;
-    final_color = CalculateDirectIllumination(ch_prd.position, -direction.xyz, ch_prd.normal, shaded_material);
+    float roughness = ShininessToRoughness(shaded_material.shininess);
+    if (shaded_material.roughness_texture_index >= 0 && shaded_material.roughness_texture_index < 256)
+    {
+      roughness = texture(roughness_textures[nonuniformEXT(uint(shaded_material.roughness_texture_index))], ch_prd.uv).r;
+    }
+
+    float metalness = clamp(shaded_material.metalness, 0.0, 1.0);
+    if (shaded_material.metalness_texture_index >= 0 && shaded_material.metalness_texture_index < 256)
+    {
+      metalness = texture(metalness_textures[nonuniformEXT(uint(shaded_material.metalness_texture_index))], ch_prd.uv).r;
+    }
+
+    vec3 final_color = CalculateDirectIllumination(ch_prd.position, normalize(-direction.xyz), normalize(ch_prd.normal), albedo, roughness, metalness);
+    final_color += shaded_material.emittance * albedo;
 
     ///////////////////////////////////////////////////////////////////////////
     // Direct Simple and slow indirect (environment) illumination
@@ -138,7 +151,7 @@ void main()
         if(!ShadowRay(ch_prd.position, ch_prd.normal, ch_prd.position + 1000.0 * dir))
         {
             vec3 L = (1.0 / float(num_samples)) * Environment(dir);
-            vec3 brdf = shaded_material.color.xyz * (1.0 / PI); 
+        vec3 brdf = albedo * (1.0 / PI) * (1.0 - metalness); 
             final_color += L * brdf * max(0.0, dot(ch_prd.normal, dir)); 
         }
     }

@@ -72,6 +72,15 @@ void VulkanRTRenderer::Init(int width, int height)
     rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
                                          vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
                                          vk::ImageLayout::eShaderReadOnlyOptimal);
+    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+                                         vk::ImageLayout::eShaderReadOnlyOptimal);
+    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+                                         vk::ImageLayout::eShaderReadOnlyOptimal);
+    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+                                         vk::ImageLayout::eShaderReadOnlyOptimal);
 
     rt_descriptor_set.Create();
     rt_pipeline.Create();
@@ -172,13 +181,20 @@ void VulkanRTRenderer::Render()
     descriptor_inputs.push_back(&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 1) % 2]);
     descriptor_inputs.push_back(&rt_pipeline.lights_buffer[swapchain.current]);
 
-    vk::ImageView *fallback_view = scene_data.material_textures_gpu.empty() ? nullptr : &scene_data.material_textures_gpu.front().image_view;
-    std::vector<vk::ImageView *> material_texture_views(256, fallback_view);
-    for (size_t i = 0; i < scene_data.material_textures_gpu.size() && i < material_texture_views.size(); ++i)
-    {
-        material_texture_views[i] = &scene_data.material_textures_gpu[i].image_view;
-    }
-    descriptor_inputs.push_back(material_texture_views);
+    auto build_image_view_array = [](std::vector<SceneData::MaterialTextureGPU> &textures) {
+        vk::ImageView *fallback_view = textures.empty() ? nullptr : &textures.front().image_view;
+        std::vector<vk::ImageView *> views(256, fallback_view);
+        for (size_t i = 0; i < textures.size() && i < views.size(); ++i)
+        {
+            views[i] = &textures[i].image_view;
+        }
+        return views;
+    };
+
+    descriptor_inputs.push_back(build_image_view_array(scene_data.diffuse_textures_gpu));
+    descriptor_inputs.push_back(build_image_view_array(scene_data.roughness_textures_gpu));
+    descriptor_inputs.push_back(build_image_view_array(scene_data.metalness_textures_gpu));
+    descriptor_inputs.push_back(build_image_view_array(scene_data.normal_textures_gpu));
 
     rt_descriptor_set.Update(descriptor_inputs);
 

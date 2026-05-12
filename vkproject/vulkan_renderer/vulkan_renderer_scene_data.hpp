@@ -24,9 +24,12 @@ struct SceneData
         vma::Allocation allocation;
         vk::ImageView image_view = VK_NULL_HANDLE;
     };
-    void UploadMaterialTextures(const std::vector<triangle_asset::MaterialTextures>& cpu_textures);
-    std::vector<MaterialTextureGPU> material_textures_gpu;  // per-material GPU images
-    std::vector<triangle_asset::MaterialTextures> material_textures_cpu; 
+    void UploadMaterialTextures();
+    std::vector<MaterialTextureGPU> diffuse_textures_gpu;
+    std::vector<MaterialTextureGPU> roughness_textures_gpu;
+    std::vector<MaterialTextureGPU> metalness_textures_gpu;
+    std::vector<MaterialTextureGPU> normal_textures_gpu;
+    std::vector<triangle_asset::MaterialTextures> material_textures_cpu;
     Context& context;
     BufferUtils& buffer_utils;
     TextureUtils& texture_utils;

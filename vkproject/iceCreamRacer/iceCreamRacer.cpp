@@ -72,10 +72,10 @@ public:
         car_asset_id = registered_car.asset_id;
 
         Material floor_material{};
-        floor_material.color = glm::vec4(0.13f, 0.15f, 0.17f, 1.0f);
-        floor_material.emittance = 0.0f;
+        floor_material.color = glm::vec4(0.15f, 0.15f, 0.16f, 1.0f);
         floor_material.metalness = 0.0f;
-        floor_material.shininess = 0.0f;
+        floor_material.shininess = 15.0f;
+        floor_material.emittance = 0.0f;
         auto registered_floor = asset_manager->RegisterMeshAsset(
             "ice_cream_car_demo_floor",
             triangle_asset::CreateQuadMesh(glm::vec3(-12.0f, -12.0f, 3.0f), glm::vec3(12.0f, 12.0f, 3.0f), floor_material));
@@ -90,10 +90,10 @@ public:
 
         // Light positioned above the scene — with -Z up, "above" means negative Z.
         auto& light_entity = entity_manager.Create();
-        light_entity.AddComponent<LightComponent>(glm::vec3(-6.0f, -10.0f, -10.0f), glm::vec3(340.0f, 320.0f, -300.0f));
+        light_entity.AddComponent<LightComponent>(glm::vec3(-3.0f, -5.0f, -5.0f), glm::vec3(68.0f, 64.0f, -60.0f));
 
         auto& light_entity2 = entity_manager.Create();
-        light_entity2.AddComponent<LightComponent>(glm::vec3(-6.0f, 5.0f, -10.0f), glm::vec3(540.0f, 520.0f, -500.0f));
+        light_entity2.AddComponent<LightComponent>(glm::vec3(-3.0f, 5.0f, -5.0f), glm::vec3(108.0f, 104.0f, -100.0f));
 
         used_assets = {car_asset_id, floor_asset_id};
     }

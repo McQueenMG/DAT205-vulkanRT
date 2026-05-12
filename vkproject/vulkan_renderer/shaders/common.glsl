@@ -57,6 +57,8 @@ struct Material
   float shininess;             // 4
   float dummy0;                // 4  -> completes 2nd 16-byte block
   int diffuse_texture_index;   // 4
+  int roughness_texture_index;  // 4
+  int metalness_texture_index;  // 4
   int normal_texture_index;    // 4
   int flip_uv_x;               // 4  <- ADD THIS (0 or 1)
   int flip_uv_y;               // 4  <- ADD THIS (0 or 1)

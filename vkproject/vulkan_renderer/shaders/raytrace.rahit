@@ -20,6 +20,10 @@ layout(std430, set = 0, binding = 3) buffer Indices
 {
     uint indices[];
 };
+layout(std430, set = 0, binding = 4) buffer Positions
+{
+        vec4 positions[];
+};
 layout(std430, set = 0, binding = 5) buffer UVs
 {
     vec2 uvs[];
@@ -29,7 +33,31 @@ layout(std430, set = 0, binding = 6) buffer Materials
     Material materials[];
 };
 
-layout(set = 0, binding = 10) uniform sampler2D material_textures[256];
+layout(set = 0, binding = 10) uniform sampler2D diffuse_textures[256];
+layout(set = 0, binding = 11) uniform sampler2D roughness_textures[256];
+layout(set = 0, binding = 12) uniform sampler2D metalness_textures[256];
+layout(set = 0, binding = 13) uniform sampler2D normal_textures[256];
+
+mat3 BuildTBN(vec3 p0, vec3 p1, vec3 p2, vec2 uv0, vec2 uv1, vec2 uv2, vec3 n)
+{
+    vec3 dp1 = p1 - p0;
+    vec3 dp2 = p2 - p0;
+    vec2 duv1 = uv1 - uv0;
+    vec2 duv2 = uv2 - uv0;
+    float denom = duv1.x * duv2.y - duv1.y * duv2.x;
+    if (abs(denom) < 1e-8)
+    {
+        vec3 tangent = normalize(perpendicular(n));
+        vec3 bitangent = normalize(cross(n, tangent));
+        return mat3(tangent, bitangent, n);
+    }
+
+    float inv_denom = 1.0 / denom;
+    vec3 tangent = normalize((dp1 * duv2.y - dp2 * duv1.y) * inv_denom);
+    tangent = normalize(tangent - n * dot(n, tangent));
+    vec3 bitangent = normalize(cross(n, tangent));
+    return mat3(tangent, bitangent, n);
+}
 
 void main()
 {
@@ -47,41 +75,35 @@ void main()
     vec2 uv2 = uvs[uv_idx.z];
     vec2 uv = barycentrics.x * uv0 + barycentrics.y * uv1 + barycentrics.z * uv2;
     uint matId = material_indices[prim_base];
+    vec3 v0 = positions[idx.x].xyz;
+    vec3 v1 = positions[idx.y].xyz;
+    vec3 v2 = positions[idx.z].xyz;
 
     // Apply per-material UV flips
     if (materials[matId].flip_uv_x != 0) uv.x = 1.0 - uv.x;
     if (materials[matId].flip_uv_y != 0) uv.y = 1.0 - uv.y;
+    prd.uv = uv;
 
-    // read diffuse texture index from Materials buffer if you prefer,
-    // but easier is to have Materials accessible (like in raygen). If not, store texture index in separate buffer.
-    // Here we assume shader can access the material via binding 6 (same as raygen).
-    // If Materials binding isn't visible here, copy the index into a small separate buffer on CPU.
-    // For safety, sample texture only when valid index present:
-    // Use nonuniformEXT on the index if necessary.
-
-    // read diffuse index via Materials buffer (same binding/layout as raygen)
-    // layout(std430, set=0, binding=6) buffer Materials { Material materials[]; };
-    // int texIdx = materials[matId].diffuse_texture_index;
-
-    // If you don't have Materials here, use a prefilled material_indices->texIdx mapping buffer instead.
-    // For this project assume material_indices contains material ids and Materials buffer is available:
 
     int texIdx = int(materials[matId].diffuse_texture_index);
-    
     if (texIdx >= 0 && texIdx < 256)
     {
-        float a = texture(material_textures[nonuniformEXT(uint(texIdx))], uv).a;
-        
-        // DEBUG: output to see what's happening
-        // vec3 debugColor = vec3(a); // visualize alpha
+        float a = texture(diffuse_textures[nonuniformEXT(uint(texIdx))], uv).a;
         if (a < 0.5)
         {
-            // Transparent — reject
             ignoreIntersectionEXT;
         }
-        else
-        {
-            // Opaque — continue to closest-hit (which will set the color)
-        }
+    }
+
+    int normalIdx = int(materials[matId].normal_texture_index);
+    if (normalIdx >= 0 && normalIdx < 256)
+    {
+        vec3 geomNormal = normalize(cross(v1 - v0, v2 - v0));
+        mat4 model_matrix = object_info[gl_InstanceCustomIndexEXT].model_matrix;
+        mat3 normalMatrix = transpose(inverse(mat3(model_matrix)));
+        vec3 worldNormal = normalize(normalMatrix * geomNormal);
+        mat3 tbn = BuildTBN(v0, v1, v2, uv0, uv1, uv2, worldNormal);
+        vec3 normalSample = texture(normal_textures[nonuniformEXT(uint(normalIdx))], uv).xyz * 2.0 - 1.0;
+        prd.normal = normalize(tbn * normalSample);
     }
 }
