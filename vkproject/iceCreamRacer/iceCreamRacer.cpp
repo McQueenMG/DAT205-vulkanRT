@@ -73,7 +73,7 @@ public:
 
         Material floor_material{};
         floor_material.color = glm::vec4(0.15f, 0.15f, 0.16f, 1.0f);
-        floor_material.metalness = 0.0f;
+        floor_material.metalness = 1.0f;
         floor_material.shininess = 15.0f;
         floor_material.emittance = 0.0f;
         auto registered_floor = asset_manager->RegisterMeshAsset(
