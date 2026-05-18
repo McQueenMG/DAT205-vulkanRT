@@ -55,12 +55,17 @@ public:
         const std::filesystem::path source_path(__FILE__);
         const std::filesystem::path vkproject_root = source_path.parent_path().parent_path();
         const std::filesystem::path car_obj_path = vkproject_root / "triangleObjects/ice_cream_car/ice_cream_car.obj";
+        const std::filesystem::path road_obj_path = vkproject_root / "triangleObjects/road/uploads_files_6788939_Road.obj";
 
 
 
         auto car_mesh = triangle_asset::LoadObjMesh(car_obj_path.string());
         car_mesh = triangle_asset::NormalizeTriangleMesh(car_mesh);
         car_mesh = triangle_asset::OrientTriangleMeshOutwards(car_mesh);
+
+        auto road_mesh = triangle_asset::LoadObjMesh(road_obj_path.string());
+        // road_mesh = triangle_asset::NormalizeTriangleMesh(road_mesh);
+        // road_mesh = triangle_asset::OrientTriangleMeshOutwards(road_mesh);
 
         glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
         for (auto &v : car_mesh.vertices) {
@@ -71,23 +76,17 @@ public:
         auto registered_car = asset_manager->RegisterMeshAsset("ice_cream_car_demo", car_mesh);
         car_asset_id = registered_car.asset_id;
 
-        Material floor_material{};
-        floor_material.color = glm::vec4(0.15f, 0.15f, 0.16f, 1.0f);
-        floor_material.metalness = 0.0f;
-        floor_material.shininess = 15.0f;
-        floor_material.emittance = 0.0f;
-        auto registered_floor = asset_manager->RegisterMeshAsset(
-            "ice_cream_car_demo_floor",
-            triangle_asset::CreateQuadMesh(glm::vec3(-12.0f, -12.0f, 3.0f), glm::vec3(12.0f, 12.0f, 3.0f), floor_material));
-        floor_asset_id = registered_floor.asset_id;
+        auto registered_road = asset_manager->RegisterMeshAsset("road_demo", road_mesh);
+        road_asset_id = registered_road.asset_id;
 
         auto& car = entity_manager.Create();
         car_entity = &car;
         car_entity->AddComponent<DynamicRenderable>(car_pos, car_direction, car_asset_id);
         car_entity->GetComponent<DynamicRenderable>()->variation = 0;
 
-        auto& floor_entity = entity_manager.Create();
-        floor_entity.AddComponent<StaticRenderable>(glm::vec2(0.0f, 0.0f), floor_asset_id);
+        auto& road_entity = entity_manager.Create();
+        road_entity.AddComponent<StaticRenderable>(glm::vec2(0.0f, 0.0f), road_asset_id);
+        road_entity.GetComponent<StaticRenderable>()->variation = 0;
 
         // Light positioned above the scene — with -Z up, "above" means negative Z.
         auto& light_entity = entity_manager.Create();
@@ -96,7 +95,7 @@ public:
         auto& light_entity2 = entity_manager.Create();
         light_entity2.AddComponent<LightComponent>(glm::vec3(-3.0f, 5.0f, -5.0f), glm::vec3(108.0f, 104.0f, -100.0f));
 
-        used_assets = {car_asset_id, floor_asset_id};
+        used_assets = {car_asset_id, road_asset_id};
     }
 
     std::vector<uint32_t> GetUsedAssets() override
@@ -204,7 +203,7 @@ public:
 
 private:
     uint32_t car_asset_id = 0;
-    uint32_t floor_asset_id = 0;
+    uint32_t road_asset_id = 0;
     std::vector<uint32_t> used_assets;
 
     // Camera starts behind and above the car.
