@@ -5,7 +5,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 enum Keys
 {
-    W, A, S, D, ESCAPE, SPACE, SHIFT, NUM_KEYS
+    W, A, S, D, ESCAPE, SPACE, SHIFT, L, NUM_KEYS
 };
 
 
@@ -13,6 +13,7 @@ struct IInput
 {
     virtual void Update() = 0; 
     virtual bool IsPressed(Keys key) = 0;
+    virtual bool IsJustPressed(Keys key) = 0;
 };
 
 extern IInput* input; 

@@ -81,9 +81,10 @@ public:
             triangle_asset::CreateQuadMesh(glm::vec3(-12.0f, -12.0f, 3.0f), glm::vec3(12.0f, 12.0f, 3.0f), floor_material));
         floor_asset_id = registered_floor.asset_id;
 
-        auto& car_entity = entity_manager.Create();
-        car_entity.AddComponent<StaticRenderable>(glm::vec2(0.0f, 0.0f), car_asset_id);
-        car_entity.GetComponent<StaticRenderable>()->variation = 0;
+        auto& car = entity_manager.Create();
+        car_entity = &car;
+        car_entity->AddComponent<DynamicRenderable>(car_pos, car_direction, car_asset_id);
+        car_entity->GetComponent<DynamicRenderable>()->variation = 0;
 
         auto& floor_entity = entity_manager.Create();
         floor_entity.AddComponent<StaticRenderable>(glm::vec2(0.0f, 0.0f), floor_asset_id);
@@ -129,6 +130,7 @@ public:
         const glm::vec3 world_up = glm::vec3(0.0f, 0.0f, 1.0f);  // back to +Z
         glm::vec3 right = glm::normalize(glm::cross(forward, world_up));
 
+        
         // Mouse look
         if (mouse_dx != 0.0 || mouse_dy != 0.0)
         {
@@ -144,18 +146,54 @@ public:
             forward = glm::normalize(forward);
             right = glm::normalize(glm::cross(forward, world_up));
         }
-
         // WASD
-        if (input && input->IsPressed(W)) { camera_eye += forward * camera_speed; }
-        if (input && input->IsPressed(S)) { camera_eye -= forward * camera_speed; }
-        if (input && input->IsPressed(D)) { camera_eye += right   * camera_speed; }
-        if (input && input->IsPressed(A)) { camera_eye -= right   * camera_speed; }
+        if (!cam_locked_to_car) {
+            if (input && input->IsPressed(W)) { camera_eye += forward * camera_speed; }
+            if (input && input->IsPressed(S)) { camera_eye -= forward * camera_speed; }
+            if (input && input->IsPressed(D)) { camera_eye += right   * camera_speed; }
+            if (input && input->IsPressed(A)) { camera_eye -= right   * camera_speed; }
+            
+            if (input && input->IsPressed(SPACE)) { camera_eye -= world_up * camera_speed; }  // swapped
+            if (input && input->IsPressed(SHIFT)) { camera_eye += world_up * camera_speed; }  // swapped
+             camera_target = camera_eye + forward;
+        } else {
+            // If camera is locked to car, we want to update the camera's position to follow the car.
+            // The car's position is given by car_pos, and we want the camera to be at a fixed offset from the car.
+            // Let's say we want the camera to be behind and above the car. We can define an offset in the car's local space.
+            glm::vec3 car_offset = glm::vec3(-7.0f, 0.0f, -3.0f);  // back and above in local space
+            // To convert this to world space, we need to consider the car's direction. We can create a rotation matrix that aligns with the car's direction.
+            float car_yaw = atan2(car_direction.y, car_direction.x);
+            glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), car_yaw, world_up);
+            glm::vec3 rotated_offset = glm::vec3(rotation * glm::vec4(car_offset, 1.0f));
+            camera_eye = glm::vec3(car_pos, 0.0f) + rotated_offset;
+            camera_target = glm::vec3(car_pos, 0.0f);
+            if (input && input->IsPressed(W)) {car_pos += car_direction * car_speed;}
+            if (input && input->IsPressed(S)) {car_pos -= car_direction * car_speed;}
+            if (input && input->IsPressed(D)) {
+                float angle = -glm::half_pi<float>() * car_turn_speed; // negative for right turn
+                glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
+                car_direction = glm::vec2(rot * glm::vec4(car_direction, 0.0f, 1.0f));
+            }
+            if (input && input->IsPressed(A)) {
+                float angle = glm::half_pi<float>() * car_turn_speed; // positive for left turn
+                glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
+                car_direction = glm::vec2(rot * glm::vec4(car_direction, 0.0f, 1.0f));
+            }
+        }
 
-        if (input && input->IsPressed(SPACE)) { camera_eye -= world_up * camera_speed; }  // swapped
-        if (input && input->IsPressed(SHIFT)) { camera_eye += world_up * camera_speed; }  // swapped
-
-        camera_target = camera_eye + forward;
+        if (car_entity)
+        {
+            auto* dr = car_entity->GetComponent<DynamicRenderable>();
+            if (dr)
+            {
+                dr->position = car_pos;
+                dr->direction = car_direction;
+            }
+        }
+        
         renderer->SetCamera(camera_eye, camera_target, world_up);
+        if (input && input->IsJustPressed(L)) { cam_locked_to_car = !cam_locked_to_car; }
+
     }
 
     void Destroy() override
@@ -174,6 +212,13 @@ private:
     glm::vec3 camera_eye = glm::vec3(0.0f, -18.0f, -8.0f);  // back to original +Z
     glm::vec3 camera_target = glm::vec3(0.0f, 0.0f, 0.0f);
 
+    ecs::Entity* car_entity = nullptr;
+    glm::vec2 car_direction = glm::vec2(0.1f, 0.0f);
+    glm::vec2 car_pos = glm::vec2(0.0f, 0.0f);
+    bool cam_locked_to_car = false;
+
+    const float car_speed = 0.8f;
+    const float car_turn_speed = 0.01f;
     const float camera_speed      = 0.05f;
     const float mouse_sensitivity = 0.005f;
     double prev_mouse_x = 0.0, prev_mouse_y = 0.0;
@@ -183,47 +228,39 @@ private:
     // pitch = asin(8 / length(0,18,8)) = asin(8/19.73) ≈ 0.438 (positive now, looking slightly "down" toward origin)
     float yaw   = glm::half_pi<float>();
     float pitch = 0.438f;
+
 };
 }  // namespace
 
-class IceCreamRacerGame : public Game
+IceCreamRacerGame::IceCreamRacerGame(int w, int h) : width(w), height(h) {}
+
+void IceCreamRacerGame::Init()
 {
-public:
-    IceCreamRacerGame(int w, int h) : width(w), height(h) {}
+    renderer_impl.Init(width, height);
+    renderer = &renderer_impl;
 
-    void Init() override
-    {
-        renderer_impl.Init(width, height);
-        renderer = &renderer_impl;
+    GLFWwindow* win = renderer_impl.context.glfw_window;
+    input_impl = std::make_unique<GLFWInput>(win);
+    input = input_impl.get();
 
-        GLFWwindow* win = renderer_impl.context.glfw_window;
-        input_impl = std::make_unique<GLFWInput>(win);
-        input = input_impl.get();
+    auto* scene = new IceCreamCarScene();
+    scenes.push_back(scene);
 
-        auto* scene = new IceCreamCarScene();
-        scenes.push_back(scene);
+    double mx, my;
+    if (win) glfwGetCursorPos(win, &mx, &my);
+}
 
-        double mx, my;
-        if (win) glfwGetCursorPos(win, &mx, &my);
-    }
+void IceCreamRacerGame::Destroy()
+{
+    for (auto s : scenes) { s->Destroy(); delete s; }
+    scenes.clear();
 
-    void Destroy() override
-    {
-        for (auto s : scenes) { s->Destroy(); delete s; }
-        scenes.clear();
-
-        if (renderer_impl.context.device) renderer_impl.context.device.waitIdle();
-        input_impl.reset();
-        renderer_impl.Destroy();
-        renderer = nullptr;
-        input = nullptr;
-    }
-
-private:
-    int width, height;
-    VulkanRTRenderer renderer_impl;
-    std::unique_ptr<GLFWInput> input_impl;
-};
+    if (renderer_impl.context.device) renderer_impl.context.device.waitIdle();
+    input_impl.reset();
+    renderer_impl.Destroy();
+    renderer = nullptr;
+    input = nullptr;
+}
 
 int main(int argc, char** argv)
 {

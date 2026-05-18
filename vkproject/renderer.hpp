@@ -42,7 +42,7 @@ struct DynamicRenderable
             current_pos =
                 (1.0f - anim_progress) * glm::vec3(position, 0.0f) + anim_progress * glm::vec3(anim_target, 0.0f);
         }
-        float angle = glm::acos(dot(glm::vec3(1.0f, 0.0f, 0.0f), normalize(current_dir)));
+        float angle = std::atan2(current_dir.y, current_dir.x);
         current_model_matrix = glm::translate(glm::mat4(1.0f), current_pos) * glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 0.0f, 1.0f));
         return current_model_matrix; 
     }
