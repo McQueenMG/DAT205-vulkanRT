@@ -68,6 +68,11 @@ public:
         // road_mesh = triangle_asset::OrientTriangleMeshOutwards(road_mesh);
 
         glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        for (auto &v : road_mesh.vertices) {
+            glm::vec4 p = rot * glm::vec4(v, 1.0f);
+            v = glm::vec3(p);
+        }
+
         for (auto &v : car_mesh.vertices) {
             glm::vec4 p = rot * glm::vec4(v, 1.0f);
             v = glm::vec3(p);
@@ -213,7 +218,7 @@ private:
 
     ecs::Entity* car_entity = nullptr;
     glm::vec2 car_direction = glm::vec2(0.1f, 0.0f);
-    glm::vec2 car_pos = glm::vec2(0.0f, 0.0f);
+    glm::vec2 car_pos = glm::vec2(0.0f, 8.0f);
     bool cam_locked_to_car = false;
 
     const float car_speed = 0.8f;

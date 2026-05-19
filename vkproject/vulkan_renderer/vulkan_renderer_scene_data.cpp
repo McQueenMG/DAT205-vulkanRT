@@ -22,6 +22,7 @@ void SceneData::Create(Scene *_current_scene)
     std::vector<glm::vec4> all_vertices;
     std::vector<glm::ivec3> all_indices;
     std::vector<glm::vec2> all_uvs;
+
     material_textures_cpu.clear();
     diffuse_textures_gpu.clear();
     roughness_textures_gpu.clear();
@@ -140,6 +141,17 @@ void SceneData::Create(Scene *_current_scene)
                 }
             }
 
+            for (uint32_t i = 0; i < materials.size(); ++i)
+            {
+                uint32_t global_mat_idx = static_cast<uint32_t>(all_materials.size() - materials.size() + i);
+                uint32_t expected_tex_idx = material_texture_base + i;
+                bool cpu_has_rough = (expected_tex_idx < material_textures_cpu.size()) ? material_textures_cpu[expected_tex_idx].has_roughness : false;
+                LOG(INFO) << "Asset " << c << " var " << v << " local_mat=" << i
+                          << " global_mat=" << global_mat_idx
+                          << " tex_idx=" << expected_tex_idx
+                          << " cpu_has_rough=" << cpu_has_rough;
+            }
+
             std::vector<glm::vec2> resolved_uvs; // 3 UVs per triangle, aligned with all_indices
             resolved_uvs.reserve(indices.size() * 3);
             for (uint32_t i = 0; i < indices.size(); i++)
@@ -209,13 +221,61 @@ void SceneData::Create(Scene *_current_scene)
     material_index_buffer = buffer_utils.CreateBuffer(
         all_material_indices, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
+    std::cout << "EXPECTED std430 offsets: color=0, emittance=16, diffuse_idx=32\n";
     std::cout << "sizeof(Material)=" << sizeof(Material) << "\n";
     std::cout << "offsetof(color)=" << offsetof(Material, color) << "\n";
     std::cout << "offsetof(emittance)=" << offsetof(Material, emittance) << "\n";
-    std::cout << "offsetof(diffuse_texture_index)=" << offsetof(Material, diffuse_texture_index) << "\n"; 
+    std::cout << "offsetof(diffuse_texture_index)=" << offsetof(Material, diffuse_texture_index) << "\n";
+    std::cout << "offsetof(roughness_texture_index)=" << offsetof(Material, roughness_texture_index) << "\n";
+    std::cout << "offsetof(metalness_texture_index)=" << offsetof(Material, metalness_texture_index) << "\n";
+    std::cout << "offsetof(normal_texture_index)=" << offsetof(Material, normal_texture_index) << "\n";
+    std::cout << "offsetof(flip_uv_x)=" << offsetof(Material, flip_uv_x) << "\n";
+    std::cout << "offsetof(flip_uv_y)=" << offsetof(Material, flip_uv_y) << "\n";
+
+    for (size_t i = 0; i < std::min<size_t>(5, all_materials.size()); ++i)
+    {
+        const uint8_t *p = reinterpret_cast<const uint8_t *>(&all_materials[i]);
+        printf("Material[%zu] raw:", i);
+        for (size_t b = 0; b < sizeof(Material); ++b)
+            printf(" %02X", p[b]);
+        printf("\n");
+        printf("  CPU ints: diff=%d rough=%d metal=%d norm=%d\n",
+               all_materials[i].diffuse_texture_index,
+               all_materials[i].roughness_texture_index,
+               all_materials[i].metalness_texture_index,
+               all_materials[i].normal_texture_index);
+    }
 
     material_buffer = buffer_utils.CreateBuffer(
-        all_materials, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
+        all_materials, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc);
+
+    size_t mat_buf_size = all_materials.size() * sizeof(Material);
+    auto host_read_buf = buffer_utils.CreateBuffer(
+        mat_buf_size,
+        vk::BufferUsageFlagBits::eTransferDst,
+        vma::MemoryUsage::eCpuToGpu,
+        vma::AllocationCreateFlagBits::eMapped,
+        true);
+
+    // copy device material_buffer -> host_read_buf
+    buffer_utils.CopyBuffer(material_buffer.buffer, host_read_buf.buffer, mat_buf_size);
+
+    // Give the driver a moment: flush/ensure the mapped pointer is valid (host_read_buf.host_ptr is mapped)
+    const uint8_t *gpu_bytes = reinterpret_cast<const uint8_t *>(host_read_buf.host_ptr);
+    for (size_t i = 0; i < std::min<size_t>(4, all_materials.size()); ++i)
+    {
+        const uint8_t *p = gpu_bytes + i * sizeof(Material);
+        printf("GPU Material[%zu] raw:", i);
+        for (size_t b = 0; b < sizeof(Material); ++b)
+            printf(" %02X", p[b]);
+        printf("\n");
+        const int *ints = reinterpret_cast<const int *>(p + offsetof(Material, diffuse_texture_index));
+        printf("  GPU ints: diff=%d rough=%d metal=%d norm=%d\n", ints[0], ints[1], ints[2], ints[3]);
+    }
+
+    // cleanup
+    buffer_utils.DestroyBuffer(host_read_buf);
+
     uv_buffer = buffer_utils.CreateBuffer(
         all_uvs, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
@@ -287,6 +347,19 @@ void SceneData::Create(Scene *_current_scene)
     LOG(INFO) << "UV coverage: " << tri_valid_uv << " triangles with valid UVs, "
               << tri_zero_uv << " with zero UVs";
 
+    for (size_t d = 0; d < drawcalls.size(); ++d)
+    {
+        const auto &dc = drawcalls[d];
+        size_t prim_start = dc.first_index / 3;
+        size_t prim_count = dc.index_count / 3;
+        LOG(INFO) << "Drawcall " << d << " prims=" << prim_count << " first_prim=" << prim_start;
+        for (size_t p = 0; p < std::min<size_t>(prim_count, 8); ++p)
+        {
+            uint32_t mat_id = all_material_indices[prim_start + p];
+            LOG(INFO) << " prim[" << (prim_start + p) << "] mat=" << mat_id;
+        }
+    }
+
     LOG(INFO) << "Before UploadMaterialTextures:";
     for (size_t i = 0; i < std::min(size_t(5), all_materials.size()); ++i)
     {
@@ -304,12 +377,21 @@ void SceneData::Create(Scene *_current_scene)
                       << ", has_metalness=" << material_textures_cpu[i].has_metalness;
         }
     }
+    for (size_t i = 0; i < all_materials.size(); ++i)
+    {
+        bool cpu_has_rough = (i < material_textures_cpu.size()) ? material_textures_cpu[i].has_roughness : false;
+        LOG(INFO) << "GlobalMaterial[" << i << "]: diff_idx=" << all_materials[i].diffuse_texture_index
+                  << " rough_idx=" << all_materials[i].roughness_texture_index
+                  << " cpu_has_rough=" << cpu_has_rough;
+    }
 
     UploadMaterialTextures();
 }
 
 void SceneData::UploadMaterialTextures()
 {
+    constexpr int LOG_SAMPLE_COUNT = 8;
+
     const size_t texture_count = std::max<size_t>(1, std::min<size_t>(material_textures_cpu.size(), 256));
     diffuse_textures_gpu.resize(texture_count);
     roughness_textures_gpu.resize(texture_count);
@@ -345,9 +427,6 @@ void SceneData::UploadMaterialTextures()
     auto upload_texture_array = [&](auto map_member, auto flag_member, std::vector<MaterialTextureGPU> &gpu_textures,
                                     const triangle_asset::TextureMap &fallback_texture, const char *label)
     {
-        int fallback_count = 0;
-        int actual_count = 0;
-
         for (uint32_t mat_idx = 0; mat_idx < texture_count; ++mat_idx)
         {
             const auto &cpu_tex = (mat_idx < material_textures_cpu.size()) ? material_textures_cpu[mat_idx] : empty_material_textures;
@@ -399,21 +478,24 @@ void SceneData::UploadMaterialTextures()
             view_info.subresourceRange.levelCount = 1;
             gpu_tex.image_view = context.device.createImageView(view_info);
 
-            if ((cpu_tex.*flag_member) && !(cpu_tex.*map_member).data.empty())
+            std::string src = ((cpu_tex.*flag_member) && !(cpu_tex.*map_member).data.empty())
+                                  ? (cpu_tex.*map_member).source_path
+                                  : std::string("<fallback>");
+            if (mat_idx < LOG_SAMPLE_COUNT)
             {
-                actual_count++;
-                LOG(INFO) << label << " material " << mat_idx << ": actual texture " << tex_map.width << "x" << tex_map.height
-                          << " (" << tex_map.channels << " channels), size=" << tex_map.data.size();
+                LOG(INFO) << label << " view[" << mat_idx << "] = "
+                          << (uint64_t)static_cast<VkImageView>(gpu_tex.image_view)
+                          << " path=" << src;
             }
-            else
+            else if (mat_idx == texture_count - 1)
             {
-                fallback_count++;
+                LOG(INFO) << label << " view[last=" << mat_idx << "] = "
+                          << (uint64_t)static_cast<VkImageView>(gpu_tex.image_view)
+                          << " path=" << src;
             }
 
             context.allocator.destroyBuffer(staging_buf, staging_alloc_handle);
         }
-
-        LOG(INFO) << "Loaded " << actual_count << " actual " << label << " textures, " << fallback_count << " fallback textures";
     };
 
     upload_texture_array(&triangle_asset::MaterialTextures::diffuse_map, &triangle_asset::MaterialTextures::has_diffuse, diffuse_textures_gpu, white_texture, "diffuse");

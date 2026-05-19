@@ -111,12 +111,60 @@ void main()
   vec4 target    = push_constants.inv_proj * vec4(d.x, d.y, 1, 1);
   vec4 direction = push_constants.inv_view * vec4(normalize(target.xyz), 0);
 
+
     
   /////////////////////////////////////////////////////////////////////////////
   // Trace the primary ray
   /////////////////////////////////////////////////////////////////////////////
   prd.hit = false;
   traceRayEXT(topLevelAS, 0, 0xFF, 0, 0, 0, origin.xyz, 0.1, direction.xyz, 1000.0, 0);
+
+  // materialid debug visualization
+  // vec3 green = vec3(0.0, 1.0, 0.0);
+  // vec3 red = vec3(1.0, 0.0, 0.0);
+  // vec3 blue = vec3(0.0, 0.0, 1.0);
+  // vec3 pink = vec3(1.0, 0.0, 1.0);
+  // if (prd.hit) {
+  //   hitPayload ch_prd = prd;
+
+  //   if (ch_prd.mat_id == 0) {
+  //     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(green, 1.0));
+  //   }
+  //   else if (ch_prd.mat_id == 1) {
+  //     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(red, 1.0));
+  //   }
+  //   else if (ch_prd.mat_id == 2) {
+  //     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(blue, 1.0));
+  //   }
+  //   else {
+  //     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(pink, 1.0));
+  //   }
+  // }
+  // else {
+  //   vec4 out_color = vec4(Environment(direction.xyz), 1.0);
+  //   imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), out_color);
+  // }
+
+  // roughness debug visualization
+  // if (prd.hit) {
+  // hitPayload ch_prd = prd;
+  // Material m = materials[ch_prd.mat_id];
+
+  // vec3 diff = vec3(0.0);
+  // if (m.diffuse_texture_index >= 0 && m.diffuse_texture_index < 256)
+  //   diff = texture(diffuse_textures[nonuniformEXT(uint(m.diffuse_texture_index))], ch_prd.uv).rgb;
+
+  // float rough = 0.0;
+  // if (m.roughness_texture_index >= 0 && m.roughness_texture_index < 256)
+  //   rough = texture(roughness_textures[nonuniformEXT(uint(m.roughness_texture_index))], ch_prd.uv).r;
+
+  // // R = diffuse.r, G = roughness, B = diffuse.g (helps distinguish textures)
+  // vec3 col = vec3(diff.r, rough, diff.g);
+  // imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(col, 1.0));
+  // } else {
+  //   vec4 out_color = vec4(Environment(direction.xyz), 1.0);
+  //   imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), out_color);
+  // }
 
   if(prd.hit) {
     hitPayload ch_prd = prd; 
@@ -155,8 +203,13 @@ void main()
             final_color += L * brdf * max(0.0, dot(ch_prd.normal, dir)); 
         }
     }
-
-
+    // Debug temp: visualize normals
+    // Material ID visualization
+    // final_color = vec3(float(ch_prd.mat_id) / 32.0);
+    // UV visualization
+    // final_color = vec3(fract(ch_prd.uv), 0.0);
+    // Texture index visualization
+    // final_color = vec3(float(shaded_material.diffuse_texture_index) / 32.0);
     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(final_color, 1.0));
   }
   else {
