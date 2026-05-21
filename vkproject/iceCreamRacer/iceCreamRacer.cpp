@@ -61,11 +61,13 @@ public:
 
         auto car_mesh = triangle_asset::LoadObjMesh(car_obj_path.string());
         car_mesh = triangle_asset::NormalizeTriangleMesh(car_mesh);
-        car_mesh = triangle_asset::OrientTriangleMeshOutwards(car_mesh);
+        //car_mesh = triangle_asset::OrientTriangleMeshOutwards(car_mesh);
+        car_mesh = triangle_asset::ScaleTriangleMesh(car_mesh, 0.5f);  
 
         auto road_mesh = triangle_asset::LoadObjMesh(road_obj_path.string());
-        // road_mesh = triangle_asset::NormalizeTriangleMesh(road_mesh);
+        road_mesh = triangle_asset::NormalizeTriangleMesh(road_mesh);
         // road_mesh = triangle_asset::OrientTriangleMeshOutwards(road_mesh);
+        road_mesh = triangle_asset::ScaleTriangleMesh(road_mesh, 3.7f);
 
         glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
         for (auto &v : road_mesh.vertices) {
@@ -90,15 +92,15 @@ public:
         car_entity->GetComponent<DynamicRenderable>()->variation = 0;
 
         auto& road_entity = entity_manager.Create();
-        road_entity.AddComponent<StaticRenderable>(glm::vec2(0.0f, 0.0f), road_asset_id);
+        road_entity.AddComponent<StaticRenderable>(glm::vec3(0.0f, 0.0f, 0.7f), road_asset_id);
         road_entity.GetComponent<StaticRenderable>()->variation = 0;
 
-        // Light positioned above the scene — with -Z up, "above" means negative Z.
+        // Light positioned above the scene — with -Z up, "above" means negative Z.6
         auto& light_entity = entity_manager.Create();
-        light_entity.AddComponent<LightComponent>(glm::vec3(-3.0f, -5.0f, -5.0f), glm::vec3(68.0f, 64.0f, -60.0f));
+        light_entity.AddComponent<LightComponent>(glm::vec3(-3.0f, -5.0f, -5.0f), glm::vec3(8.0f, 8.0f, -8.0f));
 
         auto& light_entity2 = entity_manager.Create();
-        light_entity2.AddComponent<LightComponent>(glm::vec3(-3.0f, 5.0f, -5.0f), glm::vec3(108.0f, 104.0f, -100.0f));
+        light_entity2.AddComponent<LightComponent>(glm::vec3(-3.0f, 5.0f, -5.0f), glm::vec3(8.0f, 8.0f, -8.0f));
 
         used_assets = {car_asset_id, road_asset_id};
     }
@@ -164,24 +166,24 @@ public:
             // If camera is locked to car, we want to update the camera's position to follow the car.
             // The car's position is given by car_pos, and we want the camera to be at a fixed offset from the car.
             // Let's say we want the camera to be behind and above the car. We can define an offset in the car's local space.
-            glm::vec3 car_offset = glm::vec3(-7.0f, 0.0f, -3.0f);  // back and above in local space
+            glm::vec3 car_offset = glm::vec3(-5.0f, 0.0f, -2.0f);  // back and above in local space
             // To convert this to world space, we need to consider the car's direction. We can create a rotation matrix that aligns with the car's direction.
             float car_yaw = atan2(car_direction.y, car_direction.x);
             glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), car_yaw, world_up);
             glm::vec3 rotated_offset = glm::vec3(rotation * glm::vec4(car_offset, 1.0f));
-            camera_eye = glm::vec3(car_pos, 0.0f) + rotated_offset;
-            camera_target = glm::vec3(car_pos, 0.0f);
+            camera_eye = car_pos + rotated_offset;
+            camera_target = car_pos;
             if (input && input->IsPressed(W)) {car_pos += car_direction * car_speed;}
             if (input && input->IsPressed(S)) {car_pos -= car_direction * car_speed;}
             if (input && input->IsPressed(D)) {
                 float angle = -glm::half_pi<float>() * car_turn_speed; // negative for right turn
                 glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
-                car_direction = glm::vec2(rot * glm::vec4(car_direction, 0.0f, 1.0f));
+                car_direction = glm::vec3(rot * glm::vec4(car_direction, 1.0f));
             }
             if (input && input->IsPressed(A)) {
                 float angle = glm::half_pi<float>() * car_turn_speed; // positive for left turn
                 glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
-                car_direction = glm::vec2(rot * glm::vec4(car_direction, 0.0f, 1.0f));
+                car_direction = glm::vec3(rot * glm::vec4(car_direction, 1.0f));
             }
         }
 
@@ -217,8 +219,8 @@ private:
     glm::vec3 camera_target = glm::vec3(0.0f, 0.0f, 0.0f);
 
     ecs::Entity* car_entity = nullptr;
-    glm::vec2 car_direction = glm::vec2(0.1f, 0.0f);
-    glm::vec2 car_pos = glm::vec2(0.0f, 8.0f);
+    glm::vec3 car_direction = glm::vec3(0.1f, 0.0f, 0.0f);
+    glm::vec3 car_pos = glm::vec3(0.0f, 0.0f, 0.0f);
     bool cam_locked_to_car = false;
 
     const float car_speed = 0.8f;
@@ -227,14 +229,11 @@ private:
     const float mouse_sensitivity = 0.005f;
     double prev_mouse_x = 0.0, prev_mouse_y = 0.0;
 
-    // eye=(0,-18,-8), target=(0,0,0) => forward = normalize(0, 18, 8)
-    // yaw   = atan2(18, 0) = pi/2
-    // pitch = asin(8 / length(0,18,8)) = asin(8/19.73) ≈ 0.438 (positive now, looking slightly "down" toward origin)
     float yaw   = glm::half_pi<float>();
     float pitch = 0.438f;
 
 };
-}  // namespace
+} 
 
 IceCreamRacerGame::IceCreamRacerGame(int w, int h) : width(w), height(h) {}
 

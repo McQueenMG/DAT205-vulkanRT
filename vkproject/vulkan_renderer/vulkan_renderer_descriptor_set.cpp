@@ -2,7 +2,6 @@
 #include <map>
 #include <variant>
 #include <cassert>
-#include <vkproject/log.hpp>
 
 void DescriptorSet::AddDescriptors(uint32_t count, vk::DescriptorType descriptor_type,
                                    vk::ShaderStageFlags shader_stages,
@@ -99,8 +98,6 @@ void DescriptorSet::Create()
 
 void DescriptorSet::Update(const std::vector<DescriptorInput> &input_data)
 {
-    // constexpr int LOG_SAMPLE_COUNT = 8;
-
     assert(input_data.size() == descriptors.size());
     descriptor_data.clear();
     descriptor_data.resize(descriptors.size());
@@ -161,11 +158,6 @@ void DescriptorSet::Update(const std::vector<DescriptorInput> &input_data)
                     (*image_infos)[j].imageLayout = descriptor_image_layouts[i];
                     (*image_infos)[j].sampler = texture_utils.default_sampler;
 
-                    // if ((i == 10 || i == 11) && (j < LOG_SAMPLE_COUNT || j == descriptors[i].descriptorCount - 1))
-                    // {
-                    //     LOG(INFO) << "Write descriptor binding=" << i << " elem=" << j
-                    //               << " view=" << (uint64_t)static_cast<VkImageView>(*image_views[j]);
-                    // }
                 }
                 descriptor_writes[i].pImageInfo = image_infos->data();
             }

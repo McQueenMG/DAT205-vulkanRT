@@ -62,6 +62,9 @@ struct Material
   int normal_texture_index;    // 4
   int flip_uv_x;               // 4  <- ADD THIS (0 or 1)
   int flip_uv_y;               // 4  <- ADD THIS (0 or 1)
+        // Keep explicit 64-byte stride for SSBO array compatibility between C++ and GLSL.
+  int pad0;                    // 4
+  int pad1;                    // 4
 };
 
 ///////////////////////////////////////////////////////////////////////////

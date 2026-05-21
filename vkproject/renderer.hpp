@@ -8,12 +8,12 @@ struct StaticRenderable
 {
     static uint32_t component_type_id;
     StaticRenderable() = default;
-    StaticRenderable(const glm::vec2& position, uint32_t asset) : position(position), asset(asset) {};
-    glm::vec2 position;
+    StaticRenderable(const glm::vec3& position, uint32_t asset) : position(position), asset(asset) {};
+    glm::vec3 position;
     glm::mat4 model_matrix; 
     glm::mat4 GetModelMatrix()
     {
-        glm::vec3 current_pos = glm::vec3(position, 0.0f);
+        glm::vec3 current_pos = position;
         model_matrix = glm::translate(glm::mat4(1.0f), current_pos);
         return model_matrix;
     }
@@ -26,21 +26,21 @@ struct DynamicRenderable
     static uint32_t component_type_id;
     enum Type { TURN_BASED, FREE } type;
     DynamicRenderable() = default;
-    DynamicRenderable(const glm::vec2& position, const glm::vec2& direction, uint32_t asset, DynamicRenderable::Type type = TURN_BASED)
+    DynamicRenderable(const glm::vec3& position, const glm::vec3& direction, uint32_t asset, DynamicRenderable::Type type = TURN_BASED)
         : position(position), direction(direction), asset(asset), anim_progress(0.0f), type(type){};
-    glm::vec2 position;
-    glm::vec2 direction; 
-    glm::vec2 anim_target;
+    glm::vec3 position;
+    glm::vec3 direction; 
+    glm::vec3 anim_target;
     glm::mat4 current_model_matrix; 
     glm::mat4 prev_model_matrix; 
     glm::mat4 GetCurrentAndSetPreviousModelMatrix() { 
         prev_model_matrix = current_model_matrix; 
-        auto current_pos = glm::vec3(position, 0.0f);
-        auto current_dir = glm::vec3(direction, 0.0f);
+        auto current_pos = position;
+        auto current_dir = direction;
         if (type == TURN_BASED)
         {
             current_pos =
-                (1.0f - anim_progress) * glm::vec3(position, 0.0f) + anim_progress * glm::vec3(anim_target, 0.0f);
+                (1.0f - anim_progress) * position + anim_progress * anim_target;
         }
         float angle = std::atan2(current_dir.y, current_dir.x);
         current_model_matrix = glm::translate(glm::mat4(1.0f), current_pos) * glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 0.0f, 1.0f));

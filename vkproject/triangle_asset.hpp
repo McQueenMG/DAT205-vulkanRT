@@ -46,6 +46,7 @@ namespace triangle_asset
 	};
 
 	TriangleMesh NormalizeTriangleMesh(const TriangleMesh& mesh);
+	TriangleMesh ScaleTriangleMesh(const TriangleMesh& mesh, float scale);	
 	TriangleMesh OrientTriangleMeshOutwards(const TriangleMesh& mesh);
 	TriangleMesh CreateQuadMesh(const glm::vec3& min_corner, const glm::vec3& max_corner, const Material& material);
 	TriangleMesh LoadObjMesh(const std::string& filename);

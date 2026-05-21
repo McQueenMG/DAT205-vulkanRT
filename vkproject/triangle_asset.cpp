@@ -238,6 +238,16 @@ namespace triangle_asset
         return mesh;
     }
 
+    TriangleMesh ScaleTriangleMesh(const TriangleMesh& input_mesh, float scale)
+    {
+        TriangleMesh mesh = input_mesh;
+        for (auto& vertex : mesh.vertices)
+        {
+            vertex *= scale;
+        }
+        return mesh;
+    }
+
     TriangleMesh OrientTriangleMeshOutwards(const TriangleMesh &input_mesh)
     {
         TriangleMesh mesh = input_mesh;
@@ -417,13 +427,6 @@ namespace triangle_asset
                 }
             }
         }
-        if (mesh.uv_list.size() <= 5)
-        {
-            for (size_t i = 0; i < mesh.uv_list.size(); ++i)
-            {
-                LOG(INFO) << "UV[" << i << "] = (" << mesh.uv_list[i].x << ", " << mesh.uv_list[i].y << ")";
-            }
-        }
 
         if (mesh.materials.empty())
         {
@@ -440,23 +443,6 @@ namespace triangle_asset
 
         // Diagnostic: dump material and texture assignments
         LOG(INFO) << "OBJ loaded with " << mesh.materials.size() << " materials:";
-        for (size_t i = 0; i < mesh.materials.size(); ++i)
-        {
-            LOG(INFO) << "  Material[" << i << "]: color=(" << mesh.materials[i].color.x << "," 
-                      << mesh.materials[i].color.y << "," << mesh.materials[i].color.z << ")";
-            if (i < mesh.material_textures.size())
-            {
-                LOG(INFO) << "    Texture[" << i << "]: has_diffuse=" << mesh.material_textures[i].has_diffuse
-                          << ", diffuse_map.size=" << mesh.material_textures[i].diffuse_map.data.size();
-            }
-        }
-        // Count material usage
-        std::map<uint32_t, int> mat_usage;
-        for (const auto &mid : mesh.material_indices)
-            mat_usage[mid]++;
-        LOG(INFO) << "Material usage in mesh:";
-        for (const auto &[mat_id, count] : mat_usage)
-            LOG(INFO) << "  Material[" << mat_id << "]: " << count << " faces";
 
         return mesh;
     }

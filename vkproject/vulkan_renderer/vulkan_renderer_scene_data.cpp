@@ -106,50 +106,59 @@ void SceneData::Create(Scene *_current_scene)
             for (uint32_t i = 0; i < vertices.size(); i++)
                 all_vertices.push_back(glm::vec4(vertices[i], 1.0f));
 
-            const uint32_t material_texture_base = static_cast<uint32_t>(material_textures_cpu.size());
-            for (uint32_t i = 0; i < materials.size(); i++)
+            // Assign one explicit texture slot per material to avoid relying on
+            // implicit ordering between material arrays and texture arrays.
+            std::vector<int> per_material_tex_slot(materials.size(), 0);
+
+            if (asset_type != AssetManager::AssetType::Vox)
             {
-                materials[i].diffuse_texture_index = static_cast<int>(material_texture_base + i);
-                materials[i].roughness_texture_index = static_cast<int>(material_texture_base + i);
-                materials[i].metalness_texture_index = static_cast<int>(material_texture_base + i);
-                materials[i].normal_texture_index = static_cast<int>(material_texture_base + i);
-                if (materials[i].diffuse_texture_index < 0 || materials[i].diffuse_texture_index >= 256)
+                auto mesh_asset = asset_manager->GetMeshAsset(c);
+                const auto &src_textures = mesh_asset.variations[v].material_textures;
+
+                if (src_textures.size() != materials.size())
                 {
-                    LOG(ERROR) << "Clamping texture indices " << materials[i].diffuse_texture_index << " -> 255 for material " << (all_materials.size() + i);
+                    LOG(WARNING) << "Material/texture count mismatch for asset " << c
+                                 << " var " << v
+                                 << " materials=" << materials.size()
+                                 << " textures=" << src_textures.size();
+                }
+
+                for (size_t i = 0; i < materials.size(); ++i)
+                {
+                    if (i < src_textures.size())
+                        material_textures_cpu.push_back(src_textures[i]);
+                    else
+                        material_textures_cpu.push_back(triangle_asset::MaterialTextures());
+
+                    per_material_tex_slot[i] = static_cast<int>(material_textures_cpu.size() - 1);
+                }
+            }
+            else
+            {
+                // Vox meshes have no textures, push defaults.
+                for (size_t i = 0; i < materials.size(); ++i)
+                {
+                    material_textures_cpu.push_back(triangle_asset::MaterialTextures());
+                    per_material_tex_slot[i] = static_cast<int>(material_textures_cpu.size() - 1);
+                }
+            }
+
+            for (size_t i = 0; i < materials.size(); ++i)
+            {
+                const int tex_slot = per_material_tex_slot[i];
+                materials[i].diffuse_texture_index = tex_slot;
+                materials[i].roughness_texture_index = tex_slot;
+                materials[i].metalness_texture_index = tex_slot;
+                materials[i].normal_texture_index = tex_slot;
+                if (tex_slot < 0 || tex_slot >= 256)
+                {
+                    LOG(ERROR) << "Clamping texture index " << tex_slot << " -> 255 for material " << (all_materials.size() + i);
                     materials[i].diffuse_texture_index = 255;
                     materials[i].roughness_texture_index = 255;
                     materials[i].metalness_texture_index = 255;
                     materials[i].normal_texture_index = 255;
                 }
                 all_materials.push_back(materials[i]);
-            }
-            if (asset_type != AssetManager::AssetType::Vox)
-            {
-                auto mesh_asset = asset_manager->GetMeshAsset(c);
-                for (size_t tex_idx = 0; tex_idx < mesh_asset.variations[v].material_textures.size(); ++tex_idx)
-                {
-                    const auto &mat_tex = mesh_asset.variations[v].material_textures[tex_idx];
-                    material_textures_cpu.push_back(mat_tex);
-                }
-            }
-            else
-            {
-                // Vox meshes have no textures, push defaults
-                for (int i = 0; i < static_cast<int>(materials.size()); ++i)
-                {
-                    material_textures_cpu.push_back(triangle_asset::MaterialTextures());
-                }
-            }
-
-            for (uint32_t i = 0; i < materials.size(); ++i)
-            {
-                uint32_t global_mat_idx = static_cast<uint32_t>(all_materials.size() - materials.size() + i);
-                uint32_t expected_tex_idx = material_texture_base + i;
-                bool cpu_has_rough = (expected_tex_idx < material_textures_cpu.size()) ? material_textures_cpu[expected_tex_idx].has_roughness : false;
-                LOG(INFO) << "Asset " << c << " var " << v << " local_mat=" << i
-                          << " global_mat=" << global_mat_idx
-                          << " tex_idx=" << expected_tex_idx
-                          << " cpu_has_rough=" << cpu_has_rough;
             }
 
             std::vector<glm::vec2> resolved_uvs; // 3 UVs per triangle, aligned with all_indices
@@ -232,20 +241,6 @@ void SceneData::Create(Scene *_current_scene)
     std::cout << "offsetof(flip_uv_x)=" << offsetof(Material, flip_uv_x) << "\n";
     std::cout << "offsetof(flip_uv_y)=" << offsetof(Material, flip_uv_y) << "\n";
 
-    for (size_t i = 0; i < std::min<size_t>(5, all_materials.size()); ++i)
-    {
-        const uint8_t *p = reinterpret_cast<const uint8_t *>(&all_materials[i]);
-        printf("Material[%zu] raw:", i);
-        for (size_t b = 0; b < sizeof(Material); ++b)
-            printf(" %02X", p[b]);
-        printf("\n");
-        printf("  CPU ints: diff=%d rough=%d metal=%d norm=%d\n",
-               all_materials[i].diffuse_texture_index,
-               all_materials[i].roughness_texture_index,
-               all_materials[i].metalness_texture_index,
-               all_materials[i].normal_texture_index);
-    }
-
     material_buffer = buffer_utils.CreateBuffer(
         all_materials, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc);
 
@@ -259,19 +254,6 @@ void SceneData::Create(Scene *_current_scene)
 
     // copy device material_buffer -> host_read_buf
     buffer_utils.CopyBuffer(material_buffer.buffer, host_read_buf.buffer, mat_buf_size);
-
-    // Give the driver a moment: flush/ensure the mapped pointer is valid (host_read_buf.host_ptr is mapped)
-    const uint8_t *gpu_bytes = reinterpret_cast<const uint8_t *>(host_read_buf.host_ptr);
-    for (size_t i = 0; i < std::min<size_t>(4, all_materials.size()); ++i)
-    {
-        const uint8_t *p = gpu_bytes + i * sizeof(Material);
-        printf("GPU Material[%zu] raw:", i);
-        for (size_t b = 0; b < sizeof(Material); ++b)
-            printf(" %02X", p[b]);
-        printf("\n");
-        const int *ints = reinterpret_cast<const int *>(p + offsetof(Material, diffuse_texture_index));
-        printf("  GPU ints: diff=%d rough=%d metal=%d norm=%d\n", ints[0], ints[1], ints[2], ints[3]);
-    }
 
     // cleanup
     buffer_utils.DestroyBuffer(host_read_buf);
@@ -344,53 +326,12 @@ void SceneData::Create(Scene *_current_scene)
         else
             ++tri_valid_uv;
     }
-    LOG(INFO) << "UV coverage: " << tri_valid_uv << " triangles with valid UVs, "
-              << tri_zero_uv << " with zero UVs";
-
-    for (size_t d = 0; d < drawcalls.size(); ++d)
-    {
-        const auto &dc = drawcalls[d];
-        size_t prim_start = dc.first_index / 3;
-        size_t prim_count = dc.index_count / 3;
-        LOG(INFO) << "Drawcall " << d << " prims=" << prim_count << " first_prim=" << prim_start;
-        for (size_t p = 0; p < std::min<size_t>(prim_count, 8); ++p)
-        {
-            uint32_t mat_id = all_material_indices[prim_start + p];
-            LOG(INFO) << " prim[" << (prim_start + p) << "] mat=" << mat_id;
-        }
-    }
-
-    LOG(INFO) << "Before UploadMaterialTextures:";
-    for (size_t i = 0; i < std::min(size_t(5), all_materials.size()); ++i)
-    {
-        LOG(INFO) << "  Material[" << i << "]: "
-                  << "diffuse_idx=" << all_materials[i].diffuse_texture_index
-                  << ", roughness_idx=" << all_materials[i].roughness_texture_index
-                  << ", metalness_idx=" << all_materials[i].metalness_texture_index
-                  << ", shininess=" << all_materials[i].shininess;
-
-        if (i < material_textures_cpu.size())
-        {
-            LOG(INFO) << "    MaterialTextures[" << i << "]: "
-                      << "has_diffuse=" << material_textures_cpu[i].has_diffuse
-                      << ", has_roughness=" << material_textures_cpu[i].has_roughness
-                      << ", has_metalness=" << material_textures_cpu[i].has_metalness;
-        }
-    }
-    for (size_t i = 0; i < all_materials.size(); ++i)
-    {
-        bool cpu_has_rough = (i < material_textures_cpu.size()) ? material_textures_cpu[i].has_roughness : false;
-        LOG(INFO) << "GlobalMaterial[" << i << "]: diff_idx=" << all_materials[i].diffuse_texture_index
-                  << " rough_idx=" << all_materials[i].roughness_texture_index
-                  << " cpu_has_rough=" << cpu_has_rough;
-    }
 
     UploadMaterialTextures();
 }
 
 void SceneData::UploadMaterialTextures()
 {
-    constexpr int LOG_SAMPLE_COUNT = 8;
 
     const size_t texture_count = std::max<size_t>(1, std::min<size_t>(material_textures_cpu.size(), 256));
     diffuse_textures_gpu.resize(texture_count);
@@ -481,18 +422,6 @@ void SceneData::UploadMaterialTextures()
             std::string src = ((cpu_tex.*flag_member) && !(cpu_tex.*map_member).data.empty())
                                   ? (cpu_tex.*map_member).source_path
                                   : std::string("<fallback>");
-            if (mat_idx < LOG_SAMPLE_COUNT)
-            {
-                LOG(INFO) << label << " view[" << mat_idx << "] = "
-                          << (uint64_t)static_cast<VkImageView>(gpu_tex.image_view)
-                          << " path=" << src;
-            }
-            else if (mat_idx == texture_count - 1)
-            {
-                LOG(INFO) << label << " view[last=" << mat_idx << "] = "
-                          << (uint64_t)static_cast<VkImageView>(gpu_tex.image_view)
-                          << " path=" << src;
-            }
 
             context.allocator.destroyBuffer(staging_buf, staging_alloc_handle);
         }
