@@ -39,11 +39,15 @@ layout(set = 0, binding = 13) uniform sampler2D normal_textures[256];
 
 vec3 Environment(vec3 d)
 {  
-  vec3 sky = vec3(0.4, 0.2, 0.1); 
-  float blend = pow(abs(dot(d, vec3(0.0, 0.0, 1.0))), 0.5);
-  sky = (1.0 - blend) * sky + blend * vec3(0.0); // White up above
-  sky *= 0.5; 
-  return sky * 10.0;
+
+  // debug make envireonment map black
+  return vec3(0.0);
+
+  // vec3 sky = vec3(0.4, 0.2, 0.1); 
+  // float blend = pow(abs(dot(d, vec3(0.0, 0.0, 1.0))), 0.5);
+  // sky = (1.0 - blend) * sky + blend * vec3(0.0); // White up above
+  // sky *= 0.5; 
+  // return sky * 7.0;
 }
 
 vec3 homogenize(vec4 v) {
@@ -70,34 +74,303 @@ bool ShadowRay(vec3 p0, vec3 n, vec3 p1)
     return prd.hit; 
 }
 
-vec3 CalculateDirectIllumination(vec3 p, vec3 wo, vec3 n, vec3 base_color, float roughness, float metalness)
+vec3 FresnelSchlick(float cosTheta, vec3 F0)
 {
-  vec3 final_color = vec3(0.0);
-  vec3 diffuse_color = base_color * (1.0 - metalness);
-  vec3 f0 = mix(vec3(0.04), base_color, metalness);
-  float specular_power = mix(512.0, 8.0, clamp(roughness, 0.0, 1.0));
-  for(int i=0; i<push_constants.num_lights; i++)
-  {    
-    vec3 wi = normalize(lights[i].position - p);
-    float r = length(lights[i].position - p);
-    if(!ShadowRay(p, n, lights[i].position)) 
-    {
-      vec3 L = lights[i].intensity * (1.0 / (r * r));
-      vec3 h = normalize(wi + wo);
-      float ndotl = max(dot(n, wi), 0.0);
-      float ndoth = max(dot(n, h), 0.0);
-      vec3 diffuse_term = diffuse_color * (1.0 / PI);
-      vec3 specular_term = f0 * pow(ndoth, specular_power);
-      final_color += L * ndotl * (diffuse_term + specular_term);
-    }
-  }
-  return final_color;
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
+
+bool RefractRay(vec3 I, vec3 N, float eta, out vec3 T)
+{
+    float cosi = clamp(dot(-I, N), -1.0, 1.0);
+    float sin2t = eta * eta * (1.0 - cosi * cosi);
+    if (sin2t > 1.0)
+        return false;
+    float cost = sqrt(1.0 - sin2t);
+    T = eta * I + (eta * cosi - cost) * N;
+    return true;
+}
+
+
+
+
 
 float ShininessToRoughness(float s)
 {
     s = max(s, 0.0);
     return clamp(pow(2.0 / (s + 2.0), 0.25), 0.05, 1.0);
+}
+
+bool isMetal(float metalness)
+{
+  return metalness > 0.5;
+}
+
+vec3 BRDF_CookTorrence(vec3 F, float NdotH, float NdotL, float NdotV, float roughness)
+{
+  float alpha = roughness * roughness;
+  float a2 = alpha * alpha;
+
+  float denominator = NdotH * NdotH * (a2 - 1.0) + 1.0;
+  float D = a2 / (PI * denominator * denominator);
+
+  float k = (roughness + 1.0) * (roughness + 1.0) / 8.0;
+  float GL = NdotL / (NdotL * (1.0 - k) + k);
+  float GV = NdotV / (NdotV * (1.0 - k) + k);
+  float G = GL * GV;
+
+  float denominatorBRDF = 4.0 * NdotL * NdotV + 0.001; // Avoid division by zero
+  return (F * D * G) / denominatorBRDF;
+}
+
+bool isRoughDiffuse(float roughness, float metalness)
+{
+    return roughness > 0.5 && metalness < 0.5;
+}
+
+vec3 BRDF_OrenNayar(vec3 albedo, float roughness, float NdotL, float NdotV, float NdotH, vec3 L, vec3 V, vec3 N, vec3 F)
+{
+    float sigma2 = roughness * roughness;
+    float A = 1.0 - (sigma2 / (2.0 * (sigma2 + 0.33)));
+    float B = 0.45 * sigma2 / (sigma2 + 0.09);
+
+    float theta_i = acos(NdotL);
+    float theta_r = acos(NdotV);
+    vec3 Lp = normalize(L - N * NdotL);
+    vec3 Vp = normalize(V - N * NdotV);
+    float cosPhiDiff = max(0.0, dot(Lp, Vp));
+
+    float alpha = max(theta_i, theta_r);
+    float beta = min(theta_i, theta_r);
+
+    vec3 orenNayar = (albedo/ PI) * (A + B * cosPhiDiff * sin(alpha) * tan(beta));
+    vec3 specular = F * pow(NdotH, mix(512.0, 8.0, roughness));
+    return orenNayar + specular; 
+}
+
+vec3 chooseBRDF(vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float metalness, float specularity)
+{
+    vec3 H = normalize(V + L);
+    float NdotL = max(dot(N, L), 0.0);
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotH = max(dot(N, H), 0.0);
+    float VdotH = max(dot(V, H), 0.0);
+
+    vec3 dielectric_f0 = vec3(0.04) * specularity;
+    vec3 f0 = mix(dielectric_f0, albedo, metalness);
+
+    vec3 F = FresnelSchlick(VdotH, f0);
+
+    vec3 BRDF = vec3(0.0);
+
+    // Cook-Torrance microfacet model
+    if (isMetal(metalness))
+    {
+      BRDF = BRDF_CookTorrence(F, NdotH, NdotL, NdotV, roughness);
+    }
+    else if (isRoughDiffuse(roughness, metalness))
+    {
+      BRDF = BRDF_OrenNayar(albedo, roughness, NdotL, NdotV, NdotH, L, V, N, F);
+    }
+    else
+    {
+      // Lambertian + Blinn-Phong specular as a simple fallback for smooth dielectrics
+      vec3 diffuse = (albedo / PI) * (1.0 - metalness) * (1.0 - F);
+      float specular_power = mix(512.0, 8.0, roughness);
+      vec3 specular = F * pow(NdotH, specular_power);
+      BRDF = diffuse + specular;
+    }
+    return BRDF;
+}
+
+bool ShouldTraceReflection(
+    float roughness,
+    float metalness,
+    float specularity,
+    float opacity,
+    vec3 f0,
+    float cosTheta)
+{
+    if (opacity < 0.05)   return false;
+    if (roughness > 0.6)  return false;  // tighter — rough surfaces don't need a mirror ray
+    if (metalness > 0.5)  return true;   // metals always reflect
+
+    // Only bother for genuinely specular dielectrics
+    if (specularity > 0.5 && roughness < 0.4) return true;
+
+    // Grazing angle Fresnel on smooth surfaces
+    vec3 fres = FresnelSchlick(cosTheta, f0);
+    if (max(max(fres.r, fres.g), fres.b) > 0.3 && roughness < 0.3) return true;
+
+    return false;
+}
+
+
+vec3 ShadeDirectOnly(
+    vec3 p, vec3 wo, vec3 n,
+    vec3 albedo, float roughness, float metalness,
+    float specularity, float opacity)
+{
+  vec3 direct_light = vec3(0.0);
+  vec3 dielectric_f0 = vec3(0.04) * specularity;
+  vec3 f0 = mix(dielectric_f0, albedo, metalness);
+
+  for (int i = 0; i < push_constants.num_lights; i++)
+  {
+    vec3 wi   = normalize(lights[i].position - p);
+    float dist = length(lights[i].position - p);
+
+    if (!ShadowRay(p, n, lights[i].position))
+    {
+      vec3 L = lights[i].intensity * (1.0 / (dist * dist));
+      float ndotl = max(dot(n, wi), 0.0);
+      vec3 brdf  = chooseBRDF(n, wo, wi, albedo, roughness, metalness, specularity);
+      direct_light += L * brdf * ndotl;
+    }
+  }
+  return direct_light;
+}
+
+
+
+vec3 CalculateDirectIllumination(
+    vec3 p, vec3 wo, vec3 n,
+    vec3 albedo, float roughness, float metalness,
+    float specularity, float opacity)
+{
+  vec3 direct_light  = vec3(0.0);
+  vec3 dielectric_f0 = vec3(0.04) * specularity;
+  vec3 f0 = mix(dielectric_f0, albedo, metalness);
+
+  for (int i = 0; i < push_constants.num_lights; i++)
+  {
+      vec3 wi    = normalize(lights[i].position - p);
+      float dist = length(lights[i].position - p);
+
+      if (!ShadowRay(p, n, lights[i].position))
+      {
+          vec3 L     = lights[i].intensity * (1.0 / (dist * dist));
+          float ndotl = max(dot(n, wi), 0.0);
+          vec3 brdf  = chooseBRDF(n, wo, wi, albedo, roughness, metalness, specularity);
+          direct_light += L * brdf * ndotl;
+      }
+  }
+
+  float cosTheta = max(0.0, dot(n, wo));
+  vec3 fresnel   = FresnelSchlick(cosTheta, f0);
+  float reflectWeight = (1.0 - roughness) * (1.0 - roughness);
+
+  vec3 reflectColor = vec3(0.0);
+  vec3 refractColor = vec3(0.0);
+
+  if (ShouldTraceReflection(roughness, metalness, specularity, opacity, f0, cosTheta))
+  {
+    vec3 reflectDir = reflect(-wo, n);
+    hitPayload saved = prd;
+
+    prd.hit = false;
+    traceRayEXT(topLevelAS, 0, 0xFF, 0, 0, 0, p + 0.01 * n, 0.001, reflectDir, 1000.0, 0);
+
+    if (prd.hit)
+    {
+      hitPayload reflect_hit = prd;
+      Material reflect_mat   = materials[reflect_hit.mat_id];
+
+      vec3 reflect_albedo = reflect_mat.color.xyz;
+      if (reflect_mat.diffuse_texture_index >= 0 && reflect_mat.diffuse_texture_index < 256)
+      {
+        reflect_albedo *= texture(diffuse_textures[nonuniformEXT(uint(reflect_mat.diffuse_texture_index))], reflect_hit.uv).rgb;
+      }
+
+      float reflect_roughness = ShininessToRoughness(reflect_mat.shininess);
+      if (reflect_mat.roughness_texture_index >= 0 && reflect_mat.roughness_texture_index < 256)
+      {
+
+        reflect_roughness = texture(roughness_textures[nonuniformEXT(uint(reflect_mat.roughness_texture_index))], reflect_hit.uv).r;
+      }
+
+      float reflect_metalness = clamp(reflect_mat.metalness, 0.0, 1.0);
+      if (reflect_mat.metalness_texture_index >= 0 && reflect_mat.metalness_texture_index < 256)
+      {
+        reflect_metalness = texture(metalness_textures[nonuniformEXT(uint(reflect_mat.metalness_texture_index))], reflect_hit.uv).r;
+      }
+
+      // Call the non-recursive version — no further reflection bounces
+      reflectColor = ShadeDirectOnly(
+        reflect_hit.position,
+        -reflectDir,
+        normalize(reflect_hit.normal),
+        reflect_albedo,
+        reflect_roughness,
+        reflect_metalness,
+        clamp(reflect_mat.specularity, 0.0, 1.0),
+        clamp(reflect_mat.opacity,     0.0, 1.0)
+      );
+      reflectColor += reflect_mat.emittance * reflect_albedo;
+    }
+    else
+    {
+      reflectColor = Environment(reflectDir);
+    }
+
+    reflectColor *= reflectWeight;
+    prd = saved;
+  }
+
+  if (opacity < 1.0)
+  {
+    vec3 refractDir;
+    float eta = 1.0 / 1.5;
+    if (RefractRay(-wo, n, eta, refractDir))
+    {
+      if (!ShadowRay(p, n, p + 1000.0 * refractDir))
+      {
+        refractColor = Environment(refractDir) * (1.0 - reflectWeight);
+      }
+    }
+  }
+
+  if (opacity >= 1.0)
+  {
+    return direct_light + fresnel * reflectColor;
+  }
+  else
+  {
+    return direct_light * opacity + fresnel * reflectColor + (1.0 - fresnel) * refractColor;
+  }
+}
+
+
+vec3 TAA(vec3 final_color, hitPayload ch_prd, vec2 inUV)
+{
+  vec4 prev_clip = push_constants.prev_view_proj * vec4(ch_prd.prev_position, 1.0);
+  vec2 prev_ndc = prev_clip.xy / prev_clip.w;
+  vec2 prev_uv = prev_ndc * 0.5 + 0.5;
+
+  bool valid_history = all(greaterThanEqual(prev_uv, vec2(0.0))) && all(lessThanEqual(prev_uv, vec2(1.0)));
+
+  if(valid_history && push_constants.frame > 0) {
+    vec3 history_color = texture(in_final_image, prev_uv).rgb;
+    
+    vec3 color_min = vec3(1e9);
+    vec3 color_max = vec3(-1e9);
+    vec2 texel_size = 1.0 / vec2(gl_LaunchSizeEXT.xy);
+    for(int dx = -1; dx <= 1; dx++) {
+      for(int dy = -1; dy <= 1; dy++) {
+        vec2 offset = inUV + vec2(dx, dy) * texel_size;
+
+        vec3 neighborhood_color = imageLoad(out_final_image, ivec2(gl_LaunchIDEXT.xy) + ivec2(dx, dy)).rgb;
+        color_min = min(color_min, neighborhood_color);
+        color_max = max(color_max, neighborhood_color);
+      }
+    }
+    history_color = clamp(history_color, color_min, color_max);
+
+    float blend_factor = 0.1; // Could be based on motion or other heuristics
+    return mix(final_color, history_color, blend_factor);
+  }
+  else {
+    return final_color;
+  }
 }
 
 
@@ -111,78 +384,11 @@ void main()
   vec4 target    = push_constants.inv_proj * vec4(d.x, d.y, 1, 1);
   vec4 direction = push_constants.inv_view * vec4(normalize(target.xyz), 0);
 
-
-    
   /////////////////////////////////////////////////////////////////////////////
   // Trace the primary ray
   /////////////////////////////////////////////////////////////////////////////
   prd.hit = false;
   traceRayEXT(topLevelAS, 0, 0xFF, 0, 0, 0, origin.xyz, 0.1, direction.xyz, 1000.0, 0);
-
-  // materialid debug visualization
-  // vec3 green = vec3(0.0, 1.0, 0.0);
-  // vec3 red = vec3(1.0, 0.0, 0.0);
-  // vec3 blue = vec3(0.0, 0.0, 1.0);
-  // vec3 pink = vec3(1.0, 0.0, 1.0);
-  // if (prd.hit) {
-  //   hitPayload ch_prd = prd;
-
-  //   if (ch_prd.mat_id == 0) {
-  //     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(green, 1.0));
-  //   }
-  //   else if (ch_prd.mat_id == 1) {
-  //     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(red, 1.0));
-  //   }
-  //   else if (ch_prd.mat_id == 2) {
-  //     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(blue, 1.0));
-  //   }
-  //   else {
-  //     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(pink, 1.0));
-  //   }
-  // }
-  // else {
-  //   vec4 out_color = vec4(Environment(direction.xyz), 1.0);
-  //   imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), out_color);
-  // }
-
-  // roughness debug visualization
-  
-  // if (prd.hit) {
-  //   hitPayload ch_prd = prd;
-  //   Material m = materials[ch_prd.mat_id];
-
-  //   vec3 diff = vec3(0.0);
-  //   if (m.diffuse_texture_index >= 0 && m.diffuse_texture_index < 256)
-  //     diff = texture(diffuse_textures[nonuniformEXT(uint(m.diffuse_texture_index))], ch_prd.uv).rgb;
-
-  //   float rough = 0.0;
-  //   if (m.roughness_texture_index >= 0 && m.roughness_texture_index < 256)
-  //     rough = texture(roughness_textures[nonuniformEXT(uint(m.roughness_texture_index))], ch_prd.uv).r;
-
-  //   // R = diffuse.r, G = roughness, B = diffuse.g (helps distinguish textures)
-  //   vec3 col = vec3(rough, rough, rough);
-  //   imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(col, 1.0));
-  // } else {
-  //   vec4 out_color = vec4(Environment(direction.xyz), 1.0);
-  //   imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), out_color);
-  // }
-
-  // Normal debug visualization
-  // if(prd.hit){
-  //   // debug test
-  //   hitPayload ch_prd = prd;
-  //   mat3 tbn = tangentSpace(ch_prd.normal);
-  //   Material m = materials[ch_prd.mat_id];
-  //   vec3 nmap = texture(normal_textures[nonuniformEXT(uint(m.normal_texture_index))], ch_prd.uv).rgb * 2.0 - 1.0;
-  //   vec3 n_shading = normalize(tbn * nmap);
-  //   // shading normal visualization
-  //   imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(n_shading * 0.5 + 0.5, 1.0));
-  //   // geometry normal visualization
-  //   //imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(normalize(ch_prd.normal) * 0.5 + 0.5, 1.0));
-  // } else {
-  //   vec4 out_color = vec4(Environment(direction.xyz), 1.0);
-  //   imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), out_color);
-  // }
 
   if(prd.hit) {
     hitPayload ch_prd = prd; 
@@ -204,8 +410,11 @@ void main()
     {
       metalness = texture(metalness_textures[nonuniformEXT(uint(shaded_material.metalness_texture_index))], ch_prd.uv).r;
     }
+    float specularity = clamp(shaded_material.specularity, 0.0, 1.0);
+    float opacity = clamp(shaded_material.opacity, 0.0, 1.0);
 
-    vec3 final_color = CalculateDirectIllumination(ch_prd.position, normalize(-direction.xyz), normalize(ch_prd.normal), albedo, roughness, metalness);
+
+    vec3 final_color = CalculateDirectIllumination(ch_prd.position, normalize(-direction.xyz), normalize(ch_prd.normal), albedo, roughness, metalness, specularity, opacity);
     final_color += shaded_material.emittance * albedo;
 
     ///////////////////////////////////////////////////////////////////////////
@@ -216,11 +425,19 @@ void main()
         vec3 dir = cosineSampleHemisphere(randf(seed), randf(seed));
         if(!ShadowRay(ch_prd.position, ch_prd.normal, ch_prd.position + 1000.0 * dir))
         {
-            vec3 L = (1.0 / float(num_samples)) * Environment(dir);
-        vec3 brdf = albedo * (1.0 / PI) * (1.0 - metalness); 
-            final_color += L * brdf * max(0.0, dot(ch_prd.normal, dir)); 
+            vec3 L_env = (1.0 / float(num_samples)) * Environment(dir);
+
+            // remove fireflies
+            float luminance = dot(L_env, vec3(0.2126, 0.7152, 0.0722));
+            L_env = L_env * min(1.0, 4.0 / max(luminance, 0.0001));
+
+            
+            vec3 brdf = chooseBRDF(ch_prd.normal, normalize(-direction.xyz), dir, albedo, roughness, metalness, specularity);
+            float NdotL = max(dot(ch_prd.normal, dir), 0.0);
+            final_color += L_env * brdf * NdotL; 
         }
     }
+    final_color = TAA(final_color, ch_prd, inUV);
     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(final_color, 1.0));
   }
   else {

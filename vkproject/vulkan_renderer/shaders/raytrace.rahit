@@ -89,7 +89,8 @@ void main()
     if (texIdx >= 0 && texIdx < 256)
     {
         float a = texture(diffuse_textures[nonuniformEXT(uint(texIdx))], uv).a;
-        if (a < 0.5)
+        float opacity = clamp(materials[matId].opacity, 0.0, 1.0);
+        if (a < 0.5 || opacity == 0.0)
         {
             ignoreIntersectionEXT;
         }

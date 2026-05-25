@@ -18,7 +18,7 @@ map_Pr icecreamvan_rough_x2048.png
 norm icecreamvan_normal_x2048.png
 
 newmtl decals
-format 0 1
+format 1 1
 Tr 0.0000
 Tf 1.0000 1.0000 1.0000
 illum 1

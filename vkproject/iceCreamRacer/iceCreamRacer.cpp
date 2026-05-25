@@ -56,53 +56,83 @@ public:
         const std::filesystem::path vkproject_root = source_path.parent_path().parent_path();
         const std::filesystem::path car_obj_path = vkproject_root / "triangleObjects/ice_cream_car/ice_cream_car.obj";
         const std::filesystem::path road_obj_path = vkproject_root / "triangleObjects/road/uploads_files_6788939_Road.obj";
+        const std::filesystem::path tunnel_obj_path = vkproject_root / "triangleObjects/Tunnel/TUNNEL.obj";
 
-
+        auto tunnel_mesh = triangle_asset::LoadObjMesh(tunnel_obj_path.string());
+        tunnel_mesh = triangle_asset::NormalizeTriangleMesh(tunnel_mesh);
+        tunnel_mesh = triangle_asset::ScaleTriangleMesh(tunnel_mesh, 7.0f);
 
         auto car_mesh = triangle_asset::LoadObjMesh(car_obj_path.string());
         car_mesh = triangle_asset::NormalizeTriangleMesh(car_mesh);
-        //car_mesh = triangle_asset::OrientTriangleMeshOutwards(car_mesh);
         car_mesh = triangle_asset::ScaleTriangleMesh(car_mesh, 0.5f);  
 
-        auto road_mesh = triangle_asset::LoadObjMesh(road_obj_path.string());
-        road_mesh = triangle_asset::NormalizeTriangleMesh(road_mesh);
-        // road_mesh = triangle_asset::OrientTriangleMeshOutwards(road_mesh);
-        road_mesh = triangle_asset::ScaleTriangleMesh(road_mesh, 3.7f);
-
         glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-        for (auto &v : road_mesh.vertices) {
-            glm::vec4 p = rot * glm::vec4(v, 1.0f);
-            v = glm::vec3(p);
-        }
-
         for (auto &v : car_mesh.vertices) {
             glm::vec4 p = rot * glm::vec4(v, 1.0f);
             v = glm::vec3(p);
         }
 
+        for (auto &v : tunnel_mesh.vertices) {
+            glm::vec4 p = rot * glm::vec4(v, 1.0f);
+            v = glm::vec3(p);
+        }
+        rot = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        for (auto &v : tunnel_mesh.vertices) {
+            glm::vec4 p = rot * glm::vec4(v, 1.0f);
+            v = glm::vec3(p);
+        }
+
+        glm::vec3 car_pos(0.0f, 0.0f, 0.0f);
+        glm::vec3 car_direction(0.0f, 1.0f, 0.0f);
+
+        auto registered_tunnel = asset_manager->RegisterMeshAsset("tunnel_demo", tunnel_mesh);
+        tunnel_asset_id = registered_tunnel.asset_id;
+
         auto registered_car = asset_manager->RegisterMeshAsset("ice_cream_car_demo", car_mesh);
         car_asset_id = registered_car.asset_id;
 
-        auto registered_road = asset_manager->RegisterMeshAsset("road_demo", road_mesh);
-        road_asset_id = registered_road.asset_id;
-
+        
+        
+        
         auto& car = entity_manager.Create();
         car_entity = &car;
         car_entity->AddComponent<DynamicRenderable>(car_pos, car_direction, car_asset_id);
         car_entity->GetComponent<DynamicRenderable>()->variation = 0;
-
-        auto& road_entity = entity_manager.Create();
-        road_entity.AddComponent<StaticRenderable>(glm::vec3(0.0f, 0.0f, 0.7f), road_asset_id);
-        road_entity.GetComponent<StaticRenderable>()->variation = 0;
-
-        // Light positioned above the scene — with -Z up, "above" means negative Z.6
+        
+        
         auto& light_entity = entity_manager.Create();
         light_entity.AddComponent<LightComponent>(glm::vec3(-3.0f, -5.0f, -5.0f), glm::vec3(8.0f, 8.0f, -8.0f));
+        
+        glm::vec3 tunnel_pos1(0.0f, 0.0f, -1.15f);
+        createTunnelPart(entity_manager, tunnel_pos1, tunnel_asset_id);
 
-        auto& light_entity2 = entity_manager.Create();
-        light_entity2.AddComponent<LightComponent>(glm::vec3(-3.0f, 5.0f, -5.0f), glm::vec3(8.0f, 8.0f, -8.0f));
+        glm::vec3 tunnel_pos2(28.0f, 0.0f, -1.15f);
+        createTunnelPart(entity_manager, tunnel_pos2, tunnel_asset_id);
 
-        used_assets = {car_asset_id, road_asset_id};
+        glm::vec3 tunnel_pos3(56.0f, 0.0f, -1.15f);
+        createTunnelPart(entity_manager, tunnel_pos3, tunnel_asset_id);
+
+        glm::vec3 tunnel_pos4(84.0f, 0.0f, -1.15f);
+        createTunnelPart(entity_manager, tunnel_pos4, tunnel_asset_id);
+
+        used_assets = {car_asset_id, road_asset_id, tunnel_asset_id};
+    }
+
+    void createTunnelPart(ecs::EntityManager& entity_manager, const glm::vec3& tunnelPos, uint32_t tunnelId)
+    {
+        auto& tunnel_entity = entity_manager.Create();
+        tunnel_entity.AddComponent<StaticRenderable>(tunnelPos, tunnelId);
+        tunnel_entity.GetComponent<StaticRenderable>()->variation = 0;
+
+        auto addTunnelLight = [&](const glm::vec3& offset)
+        {
+            auto& light_entity = entity_manager.Create();
+            light_entity.AddComponent<LightComponent>(tunnelPos + offset, glm::vec3(20.0f, 20.0f, -20.0f));
+        };
+
+        addTunnelLight(glm::vec3(0.0f, 0.0f, -1.5f));
+        addTunnelLight(glm::vec3(10.0f, 0.0f, -1.5f));
+        addTunnelLight(glm::vec3(-10.0f, 0.0f, -1.5f));
     }
 
     std::vector<uint32_t> GetUsedAssets() override
@@ -159,20 +189,16 @@ public:
             if (input && input->IsPressed(D)) { camera_eye += right   * camera_speed; }
             if (input && input->IsPressed(A)) { camera_eye -= right   * camera_speed; }
             
-            if (input && input->IsPressed(SPACE)) { camera_eye -= world_up * camera_speed; }  // swapped
-            if (input && input->IsPressed(SHIFT)) { camera_eye += world_up * camera_speed; }  // swapped
+            if (input && input->IsPressed(SPACE)) { camera_eye -= world_up * camera_speed; }  
+            if (input && input->IsPressed(SHIFT)) { camera_eye += world_up * camera_speed; }  
              camera_target = camera_eye + forward;
         } else {
-            // If camera is locked to car, we want to update the camera's position to follow the car.
-            // The car's position is given by car_pos, and we want the camera to be at a fixed offset from the car.
-            // Let's say we want the camera to be behind and above the car. We can define an offset in the car's local space.
-            glm::vec3 car_offset = glm::vec3(-5.0f, 0.0f, -2.0f);  // back and above in local space
-            // To convert this to world space, we need to consider the car's direction. We can create a rotation matrix that aligns with the car's direction.
+            glm::vec3 car_offset = glm::vec3(-3.5f, 0.0f, -1.5f);  // back and above in local space
             float car_yaw = atan2(car_direction.y, car_direction.x);
             glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), car_yaw, world_up);
             glm::vec3 rotated_offset = glm::vec3(rotation * glm::vec4(car_offset, 1.0f));
             camera_eye = car_pos + rotated_offset;
-            camera_target = car_pos;
+            camera_target = car_pos;  
             if (input && input->IsPressed(W)) {car_pos += car_direction * car_speed;}
             if (input && input->IsPressed(S)) {car_pos -= car_direction * car_speed;}
             if (input && input->IsPressed(D)) {
@@ -211,6 +237,7 @@ public:
 private:
     uint32_t car_asset_id = 0;
     uint32_t road_asset_id = 0;
+    uint32_t tunnel_asset_id = 0;
     std::vector<uint32_t> used_assets;
 
     // Camera starts behind and above the car.
@@ -223,8 +250,8 @@ private:
     glm::vec3 car_pos = glm::vec3(0.0f, 0.0f, 0.0f);
     bool cam_locked_to_car = false;
 
-    const float car_speed = 0.8f;
-    const float car_turn_speed = 0.01f;
+    const float car_speed = 1.0f;
+    const float car_turn_speed = 0.005f;
     const float camera_speed      = 0.05f;
     const float mouse_sensitivity = 0.005f;
     double prev_mouse_x = 0.0, prev_mouse_y = 0.0;

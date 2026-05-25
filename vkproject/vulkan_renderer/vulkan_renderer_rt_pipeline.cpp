@@ -90,7 +90,8 @@ void VulkanRTRenderer::RT_Pipeline::Create()
     // hit points of the camera rays, hence a recursion level of 2. This number should be kept as low
     // as possible for performance reasons. Even recursive ray tracing should be flattened into a loop
     // in the ray generation to avoid deep recursion.
-    rayPipelineInfo.maxPipelineRayRecursionDepth = 2; // Ray depth
+    // Added one more for reflecttion ray
+    rayPipelineInfo.maxPipelineRayRecursionDepth = 3; // Ray depth
     rayPipelineInfo.layout = pipeline_layout;
 
     pipeline = context.device.createRayTracingPipelineKHR({}, {}, rayPipelineInfo).value;

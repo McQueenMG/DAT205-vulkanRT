@@ -144,6 +144,7 @@ void VulkanRTRenderer::Render()
 
     ImGui::Begin("RT Renderer");
     ImGui::SliderInt("Indirect samples", &rt_pipeline.num_indirect_samples, 0, 64);
+    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
     ImGui::End();
 
     ///////////////////////////////////////////////////////////////////////////

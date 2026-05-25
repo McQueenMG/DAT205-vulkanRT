@@ -145,24 +145,42 @@ namespace triangle_asset
                     line_stream >> emission.x >> emission.y >> emission.z;
                     material.emittance = std::max(emission.x, std::max(emission.y, emission.z));
                 }
+                else if (prefix == "Ns")
+                {
+                    float ns = 0.0f;
+                    line_stream >> ns;
+                    material.shininess = ns;
+                }
+                else if (prefix == "Ks")
+                {
+                    glm::vec3 specularity{};
+                    line_stream >> specularity.x >> specularity.y >> specularity.z;
+                    material.specularity = std::max(specularity.x, std::max(specularity.y, specularity.z));
+                }
                 else if (prefix == "Pm")
                 {
                     line_stream >> material.metalness;
+                }
+                else if (prefix == "Tr")
+                {
+                    float transparency = 1.0f;
+                    line_stream >> transparency;
+                    material.opacity = 1.0f - transparency;
+                    LOG(INFO) << "Parsed opacity from Tr: " << material.opacity << " for material: " << current_name << "\n";
+
+                }
+                else if (prefix == "d")
+                {
+                    float opacity = 1.0f;
+                    line_stream >> opacity;
+                    material.opacity = opacity;
+                    LOG(INFO) << "Parsed opacity from d: " << material.opacity << " for material: " << current_name << "\n";
                 }
                 else if (prefix == "Pr")
                 {
                     float roughness = 0.0f;
                     line_stream >> roughness;
                     material.shininess = RoughnessToShininess(roughness);
-                }
-                else if (prefix == "d")
-                {
-                    float opacity = 1.0f;
-                    line_stream >> opacity;
-                    if (opacity <= 0.0f)
-                    {
-                        material.emittance = 0.0f;
-                    }
                 }
                 else if (prefix == "Tr")
                 {
@@ -374,14 +392,14 @@ namespace triangle_asset
                         mesh.materials.push_back(mtl_result.materials[current_material_name]);
                         mesh.material_textures.push_back(mtl_result.textures[current_material_name]);
                         LOG(VERBOSE) << "Added material '" << current_material_name << "' as material index " 
-                                     << mesh_material_indices_by_name[current_material_name];
+                                     << mesh_material_indices_by_name[current_material_name] << "\n";
                     }
                     current_material_index = mesh_material_indices_by_name[current_material_name];
-                    LOG(VERBOSE) << "usemtl: switching to '" << current_material_name << "' (index=" << current_material_index << ")";
+                    LOG(VERBOSE) << "usemtl: switching to '" << current_material_name << "' (index=" << current_material_index << ")\n";
                 }
                 else
                 {
-                    LOG(WARNING) << "Material '" << current_material_name << "' not found in MTL file";
+                    LOG(WARNING) << "Material '" << current_material_name << "' not found in MTL file" << "\n";
                     current_material_index = 0;
                 }
                 continue;

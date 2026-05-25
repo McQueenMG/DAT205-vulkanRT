@@ -55,7 +55,8 @@ struct Material
   float emittance;             // 4
   float metalness;             // 4
   float shininess;             // 4
-  float dummy0;                // 4  -> completes 2nd 16-byte block
+  float specularity;           // 4  > completes 2nd 16-byte block
+  float opacity;                // 4
   int diffuse_texture_index;   // 4
   int roughness_texture_index;  // 4
   int metalness_texture_index;  // 4
@@ -63,7 +64,6 @@ struct Material
   int flip_uv_x;               // 4  <- ADD THIS (0 or 1)
   int flip_uv_y;               // 4  <- ADD THIS (0 or 1)
         // Keep explicit 64-byte stride for SSBO array compatibility between C++ and GLSL.
-  int pad0;                    // 4
   int pad1;                    // 4
 };
 
