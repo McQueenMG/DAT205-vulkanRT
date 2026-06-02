@@ -87,17 +87,15 @@ public:
             v = glm::vec3(p);
         }
 
-        glm::vec3 car_pos(0.0f, 0.0f, 0.0f);
-        glm::vec3 car_direction(0.0f, 1.0f, 0.0f);
+        car_pos = glm::vec3(0.0f, 0.5f, 0.0f);
+        car_direction = glm::vec3(0.1f, 0.0f, 0.0f);
+    
 
         auto registered_tunnel = asset_manager->RegisterMeshAsset("tunnel_demo", tunnel_mesh);
         tunnel_asset_id = registered_tunnel.asset_id;
 
         auto registered_car = asset_manager->RegisterMeshAsset("ice_cream_car_demo", car_mesh);
         car_asset_id = registered_car.asset_id;
-
-        
-        
         
         auto& car = entity_manager.Create();
         car_entity = &car;
@@ -219,17 +217,23 @@ public:
             glm::vec3 rotated_offset = glm::vec3(rotation * glm::vec4(car_offset, 1.0f));
             camera_eye = car_pos + rotated_offset;
             camera_target = car_pos;  
-            if (input && input->IsPressed(W)) {car_pos += car_direction * car_speed;}
-            if (input && input->IsPressed(S)) {car_pos -= car_direction * car_speed;}
-            if (input && input->IsPressed(D)) {
-                float angle = -glm::half_pi<float>() * car_turn_speed; // negative for right turn
-                glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
-                car_direction = glm::vec3(rot * glm::vec4(car_direction, 1.0f));
+            car_pos += car_direction * car_speed;
+            //if (input && input->IsPressed(W)) {car_pos += car_direction * car_speed;}
+            //if (input && input->IsPressed(S)) {car_pos -= car_direction * car_speed;}
+            if (input && input->IsJustPressed(D) && is_left) {
+                is_left = false;
+                car_pos.y-=1.0f;
+                // float angle = -glm::half_pi<float>() * car_turn_speed; // negative for right turn
+                // glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
+                // car_direction = glm::vec3(rot * glm::vec4(car_direction, 1.0f));
+
             }
-            if (input && input->IsPressed(A)) {
-                float angle = glm::half_pi<float>() * car_turn_speed; // positive for left turn
-                glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
-                car_direction = glm::vec3(rot * glm::vec4(car_direction, 1.0f));
+            if (input && input->IsJustPressed(A) && !is_left) {
+                is_left = true;
+                car_pos.y+=1.0f;
+                // float angle = glm::half_pi<float>() * car_turn_speed; // positive for left turn
+                // glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
+                // car_direction = glm::vec3(rot * glm::vec4(car_direction, 1.0f));
             }
         }
         
@@ -275,8 +279,8 @@ private:
     glm::vec3 camera_target = glm::vec3(0.0f, 0.0f, 0.0f);
 
     ecs::Entity* car_entity = nullptr;
-    glm::vec3 car_direction = glm::vec3(0.1f, 0.0f, 0.0f);
-    glm::vec3 car_pos = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 car_direction;
+    glm::vec3 car_pos;
     bool cam_locked_to_car = false;
 
     const float car_speed = 1.0f;
@@ -287,6 +291,7 @@ private:
 
     float yaw   = glm::half_pi<float>();
     float pitch = 0.438f;
+    bool is_left=false;
 
 };
 } 
