@@ -31,6 +31,11 @@ IInput* input = nullptr;
 // Define globals declared as extern in headers
 Game* game = nullptr;
 IRenderer* renderer = nullptr;
+struct tunnel_part
+{
+    ecs::Entity* tunnel_entity = nullptr;
+    std::vector<ecs::Entity*> light_entities;
+};
 
 namespace
 {
@@ -104,35 +109,50 @@ public:
         light_entity.AddComponent<LightComponent>(glm::vec3(-3.0f, -5.0f, -5.0f), glm::vec3(8.0f, 8.0f, -8.0f));
         
         glm::vec3 tunnel_pos1(0.0f, 0.0f, -1.15f);
-        createTunnelPart(entity_manager, tunnel_pos1, tunnel_asset_id);
+        tunnel_entities.push_back(createTunnelPart(entity_manager, tunnel_pos1, tunnel_asset_id));
 
         glm::vec3 tunnel_pos2(28.0f, 0.0f, -1.15f);
-        createTunnelPart(entity_manager, tunnel_pos2, tunnel_asset_id);
+        tunnel_entities.push_back(createTunnelPart(entity_manager, tunnel_pos2, tunnel_asset_id));
 
         glm::vec3 tunnel_pos3(56.0f, 0.0f, -1.15f);
-        createTunnelPart(entity_manager, tunnel_pos3, tunnel_asset_id);
+        tunnel_entities.push_back(createTunnelPart(entity_manager, tunnel_pos3, tunnel_asset_id));
 
         glm::vec3 tunnel_pos4(84.0f, 0.0f, -1.15f);
-        createTunnelPart(entity_manager, tunnel_pos4, tunnel_asset_id);
+        tunnel_entities.push_back(createTunnelPart(entity_manager, tunnel_pos4, tunnel_asset_id));
 
         used_assets = {car_asset_id, road_asset_id, tunnel_asset_id};
     }
 
-    void createTunnelPart(ecs::EntityManager& entity_manager, const glm::vec3& tunnelPos, uint32_t tunnelId)
+    tunnel_part createTunnelPart(ecs::EntityManager& entity_manager, const glm::vec3& tunnelPos, uint32_t tunnelId)
     {
         auto& tunnel_entity = entity_manager.Create();
         tunnel_entity.AddComponent<StaticRenderable>(tunnelPos, tunnelId);
         tunnel_entity.GetComponent<StaticRenderable>()->variation = 0;
 
+        std::vector<ecs::Entity*> light_entities;
+
         auto addTunnelLight = [&](const glm::vec3& offset)
         {
             auto& light_entity = entity_manager.Create();
             light_entity.AddComponent<LightComponent>(tunnelPos + offset, glm::vec3(20.0f, 20.0f, -20.0f));
+            light_entities.push_back(&light_entity);
         };
 
         addTunnelLight(glm::vec3(0.0f, 0.0f, -1.5f));
         addTunnelLight(glm::vec3(10.0f, 0.0f, -1.5f));
         addTunnelLight(glm::vec3(-10.0f, 0.0f, -1.5f));
+
+        return tunnel_part{&tunnel_entity, std::move(light_entities)};
+    }
+
+    void removeTunnelPart(ecs::EntityManager& entity_manager, tunnel_part& part)
+    {
+        for (auto& light_entity : part.light_entities)
+        {
+            entity_manager.Remove(*light_entity);
+        }
+
+        entity_manager.Remove(*part.tunnel_entity);
     }
 
     std::vector<uint32_t> GetUsedAssets() override
@@ -212,7 +232,7 @@ public:
                 car_direction = glm::vec3(rot * glm::vec4(car_direction, 1.0f));
             }
         }
-
+        
         if (car_entity)
         {
             auto* dr = car_entity->GetComponent<DynamicRenderable>();
@@ -222,12 +242,20 @@ public:
                 dr->direction = car_direction;
             }
         }
+        if (car_pos.x > tunnel_entities.back().tunnel_entity->GetComponent<StaticRenderable>()->position.x - 30.0f)
+        {
+            glm::vec3 new_tunnel_pos(tunnel_entities.back().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 28.0f, 0.0f, -1.15f);
+            tunnel_entities.push_back(createTunnelPart(entity_manager, new_tunnel_pos, tunnel_asset_id));
+            removeTunnelPart(entity_manager, tunnel_entities.front());
+            tunnel_entities.erase(tunnel_entities.begin());
+        }
         
         renderer->SetCamera(camera_eye, camera_target, world_up);
         if (input && input->IsJustPressed(L)) { cam_locked_to_car = !cam_locked_to_car; }
 
     }
 
+    
     void Destroy() override
     {
         entity_manager.ClearAll();
@@ -239,6 +267,7 @@ private:
     uint32_t road_asset_id = 0;
     uint32_t tunnel_asset_id = 0;
     std::vector<uint32_t> used_assets;
+    std::vector<tunnel_part> tunnel_entities;
 
     // Camera starts behind and above the car.
     // With -Z up, "above" means negative Z, so eye is at Z=-8.
