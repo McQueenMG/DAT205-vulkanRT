@@ -112,17 +112,17 @@ public:
         auto registered_car = asset_manager->RegisterMeshAsset("ice_cream_car_demo", car_mesh);
         car_asset_id = registered_car.asset_id;
 
-        // auto registered_box = asset_manager->RegisterMeshAsset("box_demo", box_mesh);
-        // box_asset_id = registered_box.asset_id;
+        auto registered_box = asset_manager->RegisterMeshAsset("box_demo", box_mesh);
+        box_asset_id = registered_box.asset_id;
 
         auto& car = entity_manager.Create();
         car_entity = &car;
         car_entity->AddComponent<DynamicRenderable>(car_pos, car_direction, car_asset_id);
         car_entity->GetComponent<DynamicRenderable>()->variation = 0;
 
-        auto& box_entity = entity_manager.Create();
-        box_entity.AddComponent<StaticRenderable>(glm::vec3(2.0f, 0.5f, 0.0f), box_asset_id);
-        box_entity.GetComponent<StaticRenderable>()->variation = 0;
+        // auto& box_entity = entity_manager.Create();
+        // box_entity.AddComponent<StaticRenderable>(glm::vec3(2.0f, 0.5f, 0.0f), box_asset_id);
+        // box_entity.GetComponent<StaticRenderable>()->variation = 0;
         
         
         auto& light_entity = entity_manager.Create();
