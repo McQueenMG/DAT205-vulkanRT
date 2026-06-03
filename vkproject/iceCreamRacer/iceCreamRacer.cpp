@@ -112,8 +112,8 @@ public:
         auto registered_car = asset_manager->RegisterMeshAsset("ice_cream_car_demo", car_mesh);
         car_asset_id = registered_car.asset_id;
 
-        auto registered_box = asset_manager->RegisterMeshAsset("box_demo", box_mesh);
-        box_asset_id = registered_box.asset_id;
+        // auto registered_box = asset_manager->RegisterMeshAsset("box_demo", box_mesh);
+        // box_asset_id = registered_box.asset_id;
 
         auto& car = entity_manager.Create();
         car_entity = &car;
@@ -189,6 +189,10 @@ public:
         for (auto& light_entity : part.light_entities)
         {
             entity_manager.Remove(*light_entity);
+        }
+        for (auto& box_entity : part.box_entities)
+        {
+            entity_manager.Remove(*box_entity);
         }
         
         entity_manager.Remove(*part.tunnel_entity);
@@ -331,7 +335,7 @@ private:
     glm::vec3 car_pos;
     bool cam_locked_to_car = false;
 
-    const float car_speed = 10.0f;
+    const float car_speed = 20.0f;
     const float car_turn_speed = 0.005f;
     const float camera_speed      = 0.05f;
     const float mouse_sensitivity = 0.005f;
