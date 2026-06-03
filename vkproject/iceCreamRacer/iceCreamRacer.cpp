@@ -179,7 +179,7 @@ public:
         if (box_position2 == 0) {
             addBox(glm::vec3(20.0f, 0.5f, 0.7f));
         } else {
-            addBox(glm::vec3(2l0.0f, -0.5f, 0.7f));
+            addBox(glm::vec3(20.0f, -0.5f, 0.7f));
         }
         return tunnel_part{&tunnel_entity, std::move(box_entities), std::move(light_entities), box_position1, box_position2};
     }
