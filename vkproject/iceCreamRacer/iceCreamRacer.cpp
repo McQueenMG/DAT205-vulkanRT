@@ -35,7 +35,10 @@ IRenderer* renderer = nullptr;
 struct tunnel_part
 {
     ecs::Entity* tunnel_entity = nullptr;
+    std::vector<ecs::Entity*> box_entities;
     std::vector<ecs::Entity*> light_entities;
+    int box_position1;
+    int box_position2;
 };
 
 namespace
@@ -147,6 +150,9 @@ public:
         tunnel_entity.GetComponent<StaticRenderable>()->variation = 0;
 
         std::vector<ecs::Entity*> light_entities;
+        std::vector<ecs::Entity*> box_entities;
+        box_position1 = rand() % 2;
+        box_position2 = rand() % 2;
 
         auto addTunnelLight = [&](const glm::vec3& offset)
         {
@@ -154,12 +160,28 @@ public:
             light_entity.AddComponent<LightComponent>(tunnelPos + offset, glm::vec3(20.0f, 20.0f, -20.0f));
             light_entities.push_back(&light_entity);
         };
+        auto addBox = [&](const glm::vec3& offset)
+        {
+            auto& box_entity= entity_manager.Create();
+            box_entity.AddComponent<StaticRenderable>(tunnelPos + offset, box_asset_id);
+            box_entity.GetComponent<StaticRenderable>()->variation = 0;
+            box_entities.push_back(&box_entity);
+        };
 
         addTunnelLight(glm::vec3(0.0f, 0.0f, -1.5f));
         addTunnelLight(glm::vec3(10.0f, 0.0f, -1.5f));
         addTunnelLight(glm::vec3(-10.0f, 0.0f, -1.5f));
-
-        return tunnel_part{&tunnel_entity, std::move(light_entities)};
+        if (box_position1== 0) {
+            addBox(glm::vec3(10.0f, 0.5f, 0.7f));
+        } else {
+            addBox(glm::vec3(10.0f, -0.5f, 0.7f));
+        }
+        if (box_position2 == 0) {
+            addBox(glm::vec3(20.0f, 0.5f, 0.7f));
+        } else {
+            addBox(glm::vec3(2l0.0f, -0.5f, 0.7f));
+        }
+        return tunnel_part{&tunnel_entity, std::move(box_entities), std::move(light_entities), box_position1, box_position2};
     }
 
     void removeTunnelPart(ecs::EntityManager& entity_manager, tunnel_part& part)
@@ -168,7 +190,7 @@ public:
         {
             entity_manager.Remove(*light_entity);
         }
-
+        
         entity_manager.Remove(*part.tunnel_entity);
     }
 
@@ -245,7 +267,7 @@ public:
             //if (input && input->IsPressed(S)) {car_pos -= car_direction * car_speed;}
             if (input && input->IsJustPressed(D) && is_left) {
                 is_left = false;
-                car_pos.y-=1.0f;
+                car_pos.y-=1.1f;
                 // float angle = -glm::half_pi<float>() * car_turn_speed; // negative for right turn
                 // glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
                 // car_direction = glm::vec3(rot * glm::vec4(car_direction, 1.0f));
@@ -253,7 +275,7 @@ public:
             }
             if (input && input->IsJustPressed(A) && !is_left) {
                 is_left = true;
-                car_pos.y+=1.0f;
+                car_pos.y+=1.1f;
                 // float angle = glm::half_pi<float>() * car_turn_speed; // positive for left turn
                 // glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
                 // car_direction = glm::vec3(rot * glm::vec4(car_direction, 1.0f));
@@ -318,7 +340,9 @@ private:
 
     float yaw   = glm::half_pi<float>();
     float pitch = 0.438f;
-    bool is_left=false;
+    bool is_left=true;
+    int box_position1=0;
+    int box_position2=0;
 
 };
 } 
