@@ -1,5 +1,6 @@
 #include "game.hpp"
 #include "input.hpp"
+#include <__msvc_chrono.hpp>
 
 void Game::Start()
 { 
@@ -14,13 +15,17 @@ void Game::Start()
         {
             auto& scene = scenes[current_scene];
             scene->Init();
-
+            
             renderer->SetScene(scene);
+            std::chrono::steady_clock::time_point last_time = std::chrono::steady_clock::now();
             while (next_scene == -1 && !should_quit && !should_restart)
             {
                 renderer->NewFrame(); 
                 input->Update();
-                scene->Update();
+                auto current_time = std::chrono::steady_clock::now();
+                float delta_time = std::chrono::duration<float>(current_time - last_time).count();
+                last_time = current_time;
+                scene->Update(delta_time);
                 renderer->Render();
                 if (input->IsPressed(ESCAPE)) Quit();
             }

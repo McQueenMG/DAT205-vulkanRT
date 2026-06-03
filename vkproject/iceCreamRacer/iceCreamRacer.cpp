@@ -21,6 +21,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include <vkproject/input.hpp>
 #include <vkproject/glfw_input.hpp>
 #include <memory>
+#include <chrono> 
 
 AssetManager g_asset_manager;
 AssetManager* asset_manager = &g_asset_manager;
@@ -60,8 +61,8 @@ public:
         const std::filesystem::path source_path(__FILE__);
         const std::filesystem::path vkproject_root = source_path.parent_path().parent_path();
         const std::filesystem::path car_obj_path = vkproject_root / "triangleObjects/ice_cream_car/ice_cream_car.obj";
-        const std::filesystem::path road_obj_path = vkproject_root / "triangleObjects/road/uploads_files_6788939_Road.obj";
         const std::filesystem::path tunnel_obj_path = vkproject_root / "triangleObjects/Tunnel/TUNNEL.obj";
+        const std::filesystem::path box_obj_path = vkproject_root / "triangleObjects/box/Sci-fi_Container_Box.obj";
 
         auto tunnel_mesh = triangle_asset::LoadObjMesh(tunnel_obj_path.string());
         tunnel_mesh = triangle_asset::NormalizeTriangleMesh(tunnel_mesh);
@@ -70,6 +71,10 @@ public:
         auto car_mesh = triangle_asset::LoadObjMesh(car_obj_path.string());
         car_mesh = triangle_asset::NormalizeTriangleMesh(car_mesh);
         car_mesh = triangle_asset::ScaleTriangleMesh(car_mesh, 0.5f);  
+
+        auto box_mesh = triangle_asset::LoadObjMesh(box_obj_path.string());
+        box_mesh = triangle_asset::NormalizeTriangleMesh(box_mesh);
+        box_mesh = triangle_asset::ScaleTriangleMesh(box_mesh, 0.4f);
 
         glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
         for (auto &v : car_mesh.vertices) {
@@ -81,8 +86,15 @@ public:
             glm::vec4 p = rot * glm::vec4(v, 1.0f);
             v = glm::vec3(p);
         }
+
         rot = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         for (auto &v : tunnel_mesh.vertices) {
+            glm::vec4 p = rot * glm::vec4(v, 1.0f);
+            v = glm::vec3(p);
+        }
+
+        rot = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 1.0f));
+        for (auto &v : box_mesh.vertices) {
             glm::vec4 p = rot * glm::vec4(v, 1.0f);
             v = glm::vec3(p);
         }
@@ -96,11 +108,18 @@ public:
 
         auto registered_car = asset_manager->RegisterMeshAsset("ice_cream_car_demo", car_mesh);
         car_asset_id = registered_car.asset_id;
-        
+
+        auto registered_box = asset_manager->RegisterMeshAsset("box_demo", box_mesh);
+        box_asset_id = registered_box.asset_id;
+
         auto& car = entity_manager.Create();
         car_entity = &car;
         car_entity->AddComponent<DynamicRenderable>(car_pos, car_direction, car_asset_id);
         car_entity->GetComponent<DynamicRenderable>()->variation = 0;
+
+        auto& box_entity = entity_manager.Create();
+        box_entity.AddComponent<StaticRenderable>(glm::vec3(2.0f, 0.5f, 0.0f), box_asset_id);
+        box_entity.GetComponent<StaticRenderable>()->variation = 0;
         
         
         auto& light_entity = entity_manager.Create();
@@ -118,7 +137,7 @@ public:
         glm::vec3 tunnel_pos4(84.0f, 0.0f, -1.15f);
         tunnel_entities.push_back(createTunnelPart(entity_manager, tunnel_pos4, tunnel_asset_id));
 
-        used_assets = {car_asset_id, road_asset_id, tunnel_asset_id};
+        used_assets = {car_asset_id, road_asset_id, tunnel_asset_id, box_asset_id};
     }
 
     tunnel_part createTunnelPart(ecs::EntityManager& entity_manager, const glm::vec3& tunnelPos, uint32_t tunnelId)
@@ -158,15 +177,19 @@ public:
         return used_assets;
     }
 
-    void Update() override
+    void Update(float dt) override
     {
         if (!renderer) return;
-
+        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
         VulkanRTRenderer* vk_renderer = static_cast<VulkanRTRenderer*>(renderer);
         if (!vk_renderer) return;
         GLFWwindow* glfw_win = vk_renderer->context.glfw_window;
         if (!glfw_win) return;
 
+        if (!timerhasstarted) {
+            std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+            timerhasstarted = true;
+        }
         double mouse_x, mouse_y;
         glfwGetCursorPos(glfw_win, &mouse_x, &mouse_y);
         double mouse_dx = mouse_x - prev_mouse_x;
@@ -209,7 +232,7 @@ public:
             
             if (input && input->IsPressed(SPACE)) { camera_eye -= world_up * camera_speed; }  
             if (input && input->IsPressed(SHIFT)) { camera_eye += world_up * camera_speed; }  
-             camera_target = camera_eye + forward;
+            camera_target = camera_eye + forward;
         } else {
             glm::vec3 car_offset = glm::vec3(-3.5f, 0.0f, -1.5f);  // back and above in local space
             float car_yaw = atan2(car_direction.y, car_direction.x);
@@ -217,7 +240,7 @@ public:
             glm::vec3 rotated_offset = glm::vec3(rotation * glm::vec4(car_offset, 1.0f));
             camera_eye = car_pos + rotated_offset;
             camera_target = car_pos;  
-            car_pos += car_direction * car_speed;
+            car_pos += car_direction * car_speed * dt;
             //if (input && input->IsPressed(W)) {car_pos += car_direction * car_speed;}
             //if (input && input->IsPressed(S)) {car_pos -= car_direction * car_speed;}
             if (input && input->IsJustPressed(D) && is_left) {
@@ -256,6 +279,8 @@ public:
         
         renderer->SetCamera(camera_eye, camera_target, world_up);
         if (input && input->IsJustPressed(L)) { cam_locked_to_car = !cam_locked_to_car; }
+        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+
 
     }
 
@@ -270,6 +295,7 @@ private:
     uint32_t car_asset_id = 0;
     uint32_t road_asset_id = 0;
     uint32_t tunnel_asset_id = 0;
+    uint32_t box_asset_id = 0;
     std::vector<uint32_t> used_assets;
     std::vector<tunnel_part> tunnel_entities;
 
@@ -283,11 +309,12 @@ private:
     glm::vec3 car_pos;
     bool cam_locked_to_car = false;
 
-    const float car_speed = 1.0f;
+    const float car_speed = 10.0f;
     const float car_turn_speed = 0.005f;
     const float camera_speed      = 0.05f;
     const float mouse_sensitivity = 0.005f;
     double prev_mouse_x = 0.0, prev_mouse_y = 0.0;
+    bool timerhasstarted = false;
 
     float yaw   = glm::half_pi<float>();
     float pitch = 0.438f;

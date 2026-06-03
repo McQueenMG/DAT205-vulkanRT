@@ -38,16 +38,11 @@ layout(set = 0, binding = 13) uniform sampler2D normal_textures[256];
 
 
 vec3 Environment(vec3 d)
-{  
-
-  // debug make envireonment map black
-  return vec3(0.0);
-
-  // vec3 sky = vec3(0.4, 0.2, 0.1); 
-  // float blend = pow(abs(dot(d, vec3(0.0, 0.0, 1.0))), 0.5);
-  // sky = (1.0 - blend) * sky + blend * vec3(0.0); // White up above
-  // sky *= 0.5; 
-  // return sky * 7.0;
+{
+  float skyBlend = clamp(0.5 * (d.z + 1.0), 0.0, 1.0);
+  vec3 horizon = vec3(0.65, 0.68, 0.72);
+  vec3 zenith = vec3(0.95, 0.97, 1.0);
+  return mix(horizon, zenith, skyBlend);
 }
 
 vec3 homogenize(vec4 v) {
@@ -96,6 +91,9 @@ bool RefractRay(vec3 I, vec3 N, float eta, out vec3 T)
 
 float ShininessToRoughness(float s)
 {
+    // If the asset parser passed a negative flag for "perfect smoothness"
+    if (s < 0.0) return 0.05; 
+    
     s = max(s, 0.0);
     return clamp(pow(2.0 / (s + 2.0), 0.25), 0.05, 1.0);
 }
@@ -331,6 +329,7 @@ vec3 CalculateDirectIllumination(
 
   if (opacity >= 1.0)
   {
+    //return reflectColor;
     return direct_light + fresnel * reflectColor;
   }
   else

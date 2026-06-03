@@ -22,6 +22,8 @@ namespace triangle_asset
             material.emittance = 0.0f;
             material.metalness = 0.0f;
             material.shininess = 0.0f;
+            material.specularity = 1.0f; 
+            material.opacity = 1.0f;    
             return material;
         }
 
@@ -75,9 +77,10 @@ namespace triangle_asset
 
         float RoughnessToShininess(float roughness)
         {
-            if (roughness <= 0.0f)
+            // Clamp to a tiny epsilon instead of checking <= 0.0f
+            if (roughness < 0.001f)
             {
-                return -1.0f;
+                roughness = 0.001f;
             }
             return 2.0f / (roughness * roughness * roughness * roughness) - 2.0f;
         }
@@ -160,6 +163,7 @@ namespace triangle_asset
                 else if (prefix == "Pm")
                 {
                     line_stream >> material.metalness;
+                    LOG(INFO) << "Parsed metalness: " << material.metalness << " for material: " << current_name << "\n";
                 }
                 else if (prefix == "Tr")
                 {
