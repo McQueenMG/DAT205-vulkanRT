@@ -68,19 +68,30 @@ void VulkanRTRenderer::Init(int width, int height)
                                      vk::ShaderStageFlagBits::eRaygenKHR);
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageBuffer,
                                      vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
-
+                            
+    // binding 10 - diffuse textures
     rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
                                          vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
                                          vk::ImageLayout::eShaderReadOnlyOptimal);
+    // binding 11 - roughness textures
     rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
                                          vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
                                          vk::ImageLayout::eShaderReadOnlyOptimal);
+    // binding 12 - metalness textures
     rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
                                          vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
                                          vk::ImageLayout::eShaderReadOnlyOptimal);
+    // binding 13 - normal textures
     rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
                                          vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
                                          vk::ImageLayout::eShaderReadOnlyOptimal);
+    // binding 14 — normal output
+    rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageImage,
+                                    vk::ShaderStageFlagBits::eRaygenKHR);
+    
+    // binding 15 — normal output in previous frame
+    rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eCombinedImageSampler,
+                                    vk::ShaderStageFlagBits::eRaygenKHR);
 
     rt_descriptor_set.Create();
     rt_pipeline.Create();
@@ -143,7 +154,11 @@ void VulkanRTRenderer::Render()
     command_buffer.reset();
 
     ImGui::Begin("RT Renderer");
-    ImGui::SliderInt("Indirect samples", &rt_pipeline.num_indirect_samples, 0, 64);
+    ImGui::SliderInt("Indirect samples", &rt_pipeline.num_indirect_samples, 0, 3);
+    ImGui::Checkbox("TAA enabled", &rt_pipeline.taa_blend);
+    ImGui::Checkbox("Reflections", &rt_pipeline.enable_reflections);
+    ImGui::SliderInt("Max lights sampled", &rt_pipeline.max_lights, 1, 64);
+    ImGui::SliderFloat("Shadow Jitter Factor", &rt_pipeline.jitter_factor, 0.0f, 1.0f);
     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
     ImGui::End();
 
@@ -196,6 +211,8 @@ void VulkanRTRenderer::Render()
     descriptor_inputs.push_back(build_image_view_array(scene_data.roughness_textures_gpu));
     descriptor_inputs.push_back(build_image_view_array(scene_data.metalness_textures_gpu));
     descriptor_inputs.push_back(build_image_view_array(scene_data.normal_textures_gpu));
+    descriptor_inputs.push_back(&rt_rendertarget.normal_image_views[(rt_descriptor_set.current_image_base + 0) % 2]);
+    descriptor_inputs.push_back(&rt_rendertarget.normal_image_views[(rt_descriptor_set.current_image_base + 1) % 2]);
 
     rt_descriptor_set.Update(descriptor_inputs);
 

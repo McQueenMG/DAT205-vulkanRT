@@ -10,12 +10,20 @@ struct RenderTarget
     std::vector<vk::Image> images;
     std::vector<vma::Allocation> image_allocs;
     std::vector<vk::ImageView> image_views;
+
+    std::vector<vk::Image> normal_images;
+    std::vector<vma::Allocation> normal_image_allocs;
+    std::vector<vk::ImageView> normal_image_views;
+
     RenderTarget(Context& context, TextureUtils& texture_utils, uint32_t num_images)
         : context(context), texture_utils(texture_utils), num_images(num_images)
     {
         images.resize(num_images);
         image_allocs.resize(num_images);
         image_views.resize(num_images);
+        normal_images.resize(num_images);
+        normal_image_allocs.resize(num_images);
+        normal_image_views.resize(num_images);
     }
     void Create();
     void Destroy();

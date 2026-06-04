@@ -26,6 +26,9 @@ void RenderTarget::Create()
     for (int i = 0; i < num_images; i++)
     {
         std::tie(images[i], image_allocs[i]) = context.allocator.createImage(create_info, alloc_create_info);
+        create_info.format = vk::Format::eR16G16B16A16Sfloat;
+        std::tie(normal_images[i], normal_image_allocs[i]) = context.allocator.createImage(create_info, alloc_create_info);
+        create_info.format = vk::Format::eR32G32B32A32Sfloat;
 #if 0  // Temp putting data in this image to find out what goes wrong.
         auto width = context.GetWindowSize().width;
         auto height = context.GetWindowSize().height;
@@ -53,6 +56,7 @@ void RenderTarget::Create()
         context.allocator.destroyBuffer(staging_buffer, staging_allocation);
 #else
         texture_utils.TransitionImageLayout(images[i], vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+        texture_utils.TransitionImageLayout(normal_images[i], vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
 #endif
     }
 
@@ -71,6 +75,15 @@ void RenderTarget::Create()
         image_view_create_info.subresourceRange.baseMipLevel = 0;
         image_view_create_info.subresourceRange.levelCount = 1;
         image_views[i] = context.device.createImageView(image_view_create_info);
+
+        vk::ImageViewCreateInfo normal_image_view_create_info{};
+        normal_image_view_create_info.image = normal_images[i];
+        normal_image_view_create_info.format = vk::Format::eR16G16B16A16Sfloat;
+        normal_image_view_create_info.viewType = vk::ImageViewType::e2D;
+        normal_image_view_create_info.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+        normal_image_view_create_info.subresourceRange.layerCount = 1;
+        normal_image_view_create_info.subresourceRange.levelCount = 1;
+        normal_image_views[i] = context.device.createImageView(normal_image_view_create_info);
     }
 }
 
@@ -80,6 +93,8 @@ void RenderTarget::Destroy()
     {
         context.allocator.destroyImage(images[i], image_allocs[i]);
         context.device.destroyImageView(image_views[i]);
+        context.allocator.destroyImage(normal_images[i], normal_image_allocs[i]);
+        context.device.destroyImageView(normal_image_views[i]);
     }
 }
 void RenderTarget::ReCreate()
