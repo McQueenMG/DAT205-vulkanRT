@@ -21,7 +21,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include <vkproject/input.hpp>
 #include <vkproject/glfw_input.hpp>
 #include <memory>
-#include <chrono> 
+#include <__msvc_chrono.hpp> 
 
 AssetManager g_asset_manager;
 AssetManager* asset_manager = &g_asset_manager;
@@ -217,6 +217,7 @@ public:
     void Update(float dt) override
     {
         if (!renderer) return;
+        
         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
         VulkanRTRenderer* vk_renderer = static_cast<VulkanRTRenderer*>(renderer);
         if (!vk_renderer) return;
@@ -224,7 +225,7 @@ public:
         if (!glfw_win) return;
 
         if (!timerhasstarted) {
-            std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+            start = std::chrono::steady_clock::now();
             timerhasstarted = true;
         }
         double mouse_x, mouse_y;
@@ -271,6 +272,7 @@ public:
             if (input && input->IsPressed(SHIFT)) { camera_eye += world_up * camera_speed; }  
             camera_target = camera_eye + forward;
         } else {
+            
             glm::vec3 car_offset = glm::vec3(-3.5f, 0.0f, -1.5f);  // back and above in local space
             float car_yaw = atan2(car_direction.y, car_direction.x);
             glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), car_yaw, world_up);
@@ -280,6 +282,10 @@ public:
             car_pos += car_direction * car_speed * dt;
             //if (input && input->IsPressed(W)) {car_pos += car_direction * car_speed;}
             //if (input && input->IsPressed(S)) {car_pos -= car_direction * car_speed;}
+            if(input && input->IsPressed(R)) {
+                Reset();
+            }
+
             if (input && input->IsJustPressed(D) && is_left) {
                 is_left = false;
                 car_pos.y-=1.1f;
@@ -295,6 +301,20 @@ public:
                 // glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, world_up);
                 // car_direction = glm::vec3(rot * glm::vec4(car_direction, 1.0f));
             }
+            if (game_over) {
+                if(stop_timer) {
+                    std::chrono::steady_clock::time_point fin = std::chrono::steady_clock::now();
+                    final_duration = std::chrono::duration_cast<std::chrono::duration<double>>(fin - start).count();
+                    stop_timer=false;
+                }
+                ImGui::Begin("Game Over", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs);
+                ImGui::Text("You hit a box! Time: %.3f s", final_duration);
+                ImGui::End();
+            } else {
+                ImGui::Begin("Duration", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs);
+                ImGui::Text("Time: %.3f s", run_duration);
+                ImGui::End();
+            }
         }
         
         if (car_entity)
@@ -306,24 +326,28 @@ public:
                 dr->direction = car_direction;
             }
         }
+        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+        run_duration = std::chrono::duration_cast<std::chrono::duration<double>>(begin - start).count();
         //if (car_pos.x>10.0f+28.0f*tunnel_counter) {
         // if (tunnel_x-5<car_pos<tunnel_x+5)
+        if(!game_over) {
         if(tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 8.0f < car_pos.x && car_pos.x < tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 12.0f) { 
             if (is_left && tunnel_entities.front().box_position1==0){
-                Reset();
+                hit_box(start);
             }else if (!is_left && tunnel_entities.front().box_position1==1)
             {
-                Reset();
+                hit_box(start);
             }
         }
         if(tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 18.0f < car_pos.x && car_pos.x < tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 22.0f) { 
             if (is_left && tunnel_entities.front().box_position2==0){
-                Reset();
+                hit_box(start);
             }else if (!is_left && tunnel_entities.front().box_position2==1)
             {
-                Reset();
+                hit_box(start);
             }
         }
+    }
         //elseif(car_pos.x==20.0f+28.0f*tunnel_counter)
         if (car_pos.x > tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 30.0f)
         {
@@ -335,12 +359,21 @@ public:
         }
         
         renderer->SetCamera(camera_eye, camera_target, world_up);
+        
+
+
         if (input && input->IsJustPressed(L)) { cam_locked_to_car = !cam_locked_to_car; }
-        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
 
     }
-
+    void hit_box(std::chrono::steady_clock::time_point& start){
+        car_speed=0.0f;
+        game_over=true;
+        stop_timer=true;
+        if(input && input->IsJustPressed(R)) {
+            Reset();
+        }
+    }
     void Reset()
     {
         for (auto& tunnel_part : tunnel_entities)
@@ -350,7 +383,11 @@ public:
         tunnel_entities.clear();
         tunnel_counter=0;
         is_left=true;
+        timerhasstarted=false;
+        game_over=false;
+        car_speed=20.0f;
         create_start_tunnel();
+        car_direction = glm::vec3(0.1f, 0.0f, 0.0f);
         car_pos = glm::vec3(0.0f, 0.5f, 0.0f);
 
     }
@@ -379,8 +416,8 @@ private:
     glm::vec3 car_pos;
     bool cam_locked_to_car = false;
 
-    const float car_speed = 20.0f;
-    const float car_turn_speed = 0.005f;
+    float car_speed = 20.0f;
+    const float car_turn_speed = 0.05f;
     const float camera_speed      = 0.05f;
     const float mouse_sensitivity = 0.005f;
     double prev_mouse_x = 0.0, prev_mouse_y = 0.0;
@@ -392,6 +429,11 @@ private:
     int box_position1=0;
     int box_position2=0;
     int tunnel_counter=0;
+    double run_duration = 0.0;
+    double final_duration=0.0;
+    bool game_over=false;
+    bool stop_timer=false;
+    std::chrono::steady_clock::time_point start;
 
 };
 } 

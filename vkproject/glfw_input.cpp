@@ -4,7 +4,7 @@
 
 std::map<Keys, uint32_t> mapping = {{ESCAPE, GLFW_KEY_ESCAPE}, {SPACE, GLFW_KEY_SPACE}, {W, GLFW_KEY_W},
                                     {A, GLFW_KEY_A},           {S, GLFW_KEY_S},         {D, GLFW_KEY_D},
-                                    {SHIFT, GLFW_KEY_LEFT_SHIFT}, {L, GLFW_KEY_L}};
+                                    {SHIFT, GLFW_KEY_LEFT_SHIFT}, {L, GLFW_KEY_L}, {R, GLFW_KEY_R}};
 
 void GLFWInput::Update() 
 { 
