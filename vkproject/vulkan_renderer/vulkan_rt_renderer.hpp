@@ -20,7 +20,9 @@
 
 struct VulkanRTRenderer : public IRenderer
 {
-    Scene * current_scene = nullptr; 
+    Scene * current_scene = nullptr;
+    bool m_static_descriptors_dirty = true;
+     
     glm::ivec2 window_size; 
     virtual void Init(int width, int height) override; 
     

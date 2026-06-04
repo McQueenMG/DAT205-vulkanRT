@@ -109,8 +109,10 @@ void VulkanRenderer::Render()
     vk::CommandBufferBeginInfo begin_info = {};
     auto result = command_buffer.begin(&begin_info);
 
+    
+
     standard_descriptor_set.Update({&standard_pipeline.model_uniforms[swapchain.current],
-                                    &scene_data.material_index_buffer, &scene_data.material_buffer});
+                                    &scene_data.material_index_buffer, &scene_data.material_buffer}, 0);
     swapchain.BeginRenderPass(command_buffer, image_index, glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
     standard_pipeline.Submit(image_index, P, V);
     imgui_context.Render(command_buffer);

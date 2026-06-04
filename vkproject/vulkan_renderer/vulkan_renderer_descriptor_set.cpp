@@ -96,12 +96,12 @@ void DescriptorSet::Create()
     descriptor_writes.resize(descriptors.size());
 }
 
-void DescriptorSet::Update(const std::vector<DescriptorInput> &input_data)
+void DescriptorSet::Update(const std::vector<DescriptorInput> &input_data, uint32_t descriptor_start_index)
 {
     assert(input_data.size() == descriptors.size());
     descriptor_data.clear();
     descriptor_data.resize(descriptors.size());
-    for (int i = 0; i < descriptors.size(); i++)
+    for (int i = descriptor_start_index; i < descriptors.size(); i++)
     {
         descriptor_writes[i].dstSet = descriptor_set[swapchain.current];
         descriptor_writes[i].dstBinding = i;
@@ -167,6 +167,7 @@ void DescriptorSet::Update(const std::vector<DescriptorInput> &input_data)
     }
     context.device.updateDescriptorSets((uint32_t)descriptor_writes.size(), descriptor_writes.data(), 0, nullptr);
 }
+
 
 void DescriptorSet::Destroy()
 {

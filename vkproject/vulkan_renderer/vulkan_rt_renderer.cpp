@@ -22,6 +22,8 @@ static void FramebufferResizeCallback(GLFWwindow *window, int width, int height)
     renderer->framebuffer_resized = true;
 }
 
+
+
 void VulkanRTRenderer::Init(int width, int height)
 {
     window_size = {width, height};
@@ -53,6 +55,65 @@ void VulkanRTRenderer::Init(int width, int height)
     swapchain.Create();
     texture_utils.Create();
 
+    // rt_rendertarget.Create();
+    // blit_descriptor_set.AddDescriptors(1, vk::DescriptorType::eCombinedImageSampler,
+    //                                    vk::ShaderStageFlagBits::eFragment);
+    // blit_descriptor_set.Create();
+    // blit_pipeline.Create();
+
+    // // Binding 0
+    // rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eAccelerationStructureKHR,
+    //                                  vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eAnyHitKHR);
+    
+    // // Bindings 1, 2, 3, 4, 5
+    // // Reduced from 6 to 5 because Materials is skipped here to preserve explicit mapping
+    // rt_descriptor_set.AddDescriptors(5, vk::DescriptorType::eStorageBuffer,
+    //                                  vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eAnyHitKHR);
+    
+    // // Binding 6: Materials Buffer
+    // rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageBuffer,
+    //                                  vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eAnyHitKHR);
+    
+    // // Binding 7: diffuse textures array (256 slots)
+    // rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+    //                                      vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+    //                                      vk::ImageLayout::eShaderReadOnlyOptimal);
+    
+    // // Binding 8: roughness textures array (256 slots)
+    // rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+    //                                      vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+    //                                      vk::ImageLayout::eShaderReadOnlyOptimal);
+    
+    // // Binding 9: metalness textures array (256 slots)
+    // rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+    //                                      vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+    //                                      vk::ImageLayout::eShaderReadOnlyOptimal);
+    
+    // // Binding 10: normal textures array (256 slots)
+    // rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+    //                                      vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+    //                                      vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    // // Binding 11: out_final_image
+    // rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR);
+    
+    // // Binding 12: in_final_image
+    // rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eRaygenKHR);
+    
+    // // Binding 13: Lights Buffer
+    // rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageBuffer,
+    //                                  vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
+                            
+    // // Binding 14: out_normal_image
+    // rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageImage,
+    //                                  vk::ShaderStageFlagBits::eRaygenKHR);
+    
+    // // Binding 15: in_normal_image
+    // rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eCombinedImageSampler,
+    //                                  vk::ShaderStageFlagBits::eRaygenKHR);
+
+
+    // OLD VERSION
     rt_rendertarget.Create();
     blit_descriptor_set.AddDescriptors(1, vk::DescriptorType::eCombinedImageSampler,
                                        vk::ShaderStageFlagBits::eFragment);
@@ -63,33 +124,34 @@ void VulkanRTRenderer::Init(int width, int height)
                                      vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eAnyHitKHR);
     rt_descriptor_set.AddDescriptors(6, vk::DescriptorType::eStorageBuffer,
                                      vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eAnyHitKHR);
+    // diffuse textures
+    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+                                         vk::ImageLayout::eShaderReadOnlyOptimal);
+    // roughness textures
+    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+                                         vk::ImageLayout::eShaderReadOnlyOptimal);
+    // metalness textures
+    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+                                         vk::ImageLayout::eShaderReadOnlyOptimal);
+    // normal textures
+    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+                                         vk::ImageLayout::eShaderReadOnlyOptimal);
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR);
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eCombinedImageSampler,
                                      vk::ShaderStageFlagBits::eRaygenKHR);
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageBuffer,
                                      vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
                             
-    // binding 10 - diffuse textures
-    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
-                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
-                                         vk::ImageLayout::eShaderReadOnlyOptimal);
-    // binding 11 - roughness textures
-    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
-                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
-                                         vk::ImageLayout::eShaderReadOnlyOptimal);
-    // binding 12 - metalness textures
-    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
-                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
-                                         vk::ImageLayout::eShaderReadOnlyOptimal);
-    // binding 13 - normal textures
-    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
-                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
-                                         vk::ImageLayout::eShaderReadOnlyOptimal);
-    // binding 14 — normal output
+    
+    // normal output
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eStorageImage,
                                     vk::ShaderStageFlagBits::eRaygenKHR);
     
-    // binding 15 — normal output in previous frame
+    // normal output in previous frame
     rt_descriptor_set.AddDescriptors(1, vk::DescriptorType::eCombinedImageSampler,
                                     vk::ShaderStageFlagBits::eRaygenKHR);
 
@@ -120,6 +182,7 @@ void VulkanRTRenderer::SetScene(Scene *scene)
 {
     context.device.waitIdle();
     current_scene = scene;
+    m_static_descriptors_dirty = true;
     scene_data.Destroy();
     scene_data.Create(scene);
     acceleration_structure.DestroyBLASes();
@@ -193,11 +256,8 @@ void VulkanRTRenderer::Render()
     descriptor_inputs.push_back(&scene_data.vertex_buffer);
     descriptor_inputs.push_back(&scene_data.uv_buffer);
     descriptor_inputs.push_back(&scene_data.material_buffer);
-    descriptor_inputs.push_back(&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 0) % 2]);
-    descriptor_inputs.push_back(&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 1) % 2]);
-    descriptor_inputs.push_back(&rt_pipeline.lights_buffer[swapchain.current]);
 
-    auto build_image_view_array = [](std::vector<SceneData::MaterialTextureGPU> &textures) {
+     auto build_image_view_array = [](std::vector<SceneData::MaterialTextureGPU> &textures) {
         vk::ImageView *fallback_view = textures.empty() ? nullptr : &textures.front().image_view;
         std::vector<vk::ImageView *> views(256, fallback_view);
         for (size_t i = 0; i < textures.size() && i < views.size(); ++i)
@@ -211,17 +271,30 @@ void VulkanRTRenderer::Render()
     descriptor_inputs.push_back(build_image_view_array(scene_data.roughness_textures_gpu));
     descriptor_inputs.push_back(build_image_view_array(scene_data.metalness_textures_gpu));
     descriptor_inputs.push_back(build_image_view_array(scene_data.normal_textures_gpu));
+
+    // needs to be updated every frame
+    descriptor_inputs.push_back(&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 0) % 2]);
+    descriptor_inputs.push_back(&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 1) % 2]);
+    descriptor_inputs.push_back(&rt_pipeline.lights_buffer[swapchain.current]);
     descriptor_inputs.push_back(&rt_rendertarget.normal_image_views[(rt_descriptor_set.current_image_base + 0) % 2]);
     descriptor_inputs.push_back(&rt_rendertarget.normal_image_views[(rt_descriptor_set.current_image_base + 1) % 2]);
 
-    rt_descriptor_set.Update(descriptor_inputs);
+    if (m_static_descriptors_dirty && current_scene != nullptr)
+    {
+
+        rt_descriptor_set.Update(descriptor_inputs, 0);
+
+        m_static_descriptors_dirty = false;
+    }
+
+    rt_descriptor_set.Update(descriptor_inputs, 11);
 
     rt_pipeline.Submit(P, V, rt_rendertarget.images[rt_descriptor_set.current_image_base % 2]);
 
-    blit_descriptor_set.Update({&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 0) % 2]});
+    blit_descriptor_set.Update({&rt_rendertarget.image_views[(rt_descriptor_set.current_image_base + 0) % 2]}, 0);
     swapchain.BeginRenderPass(command_buffer, image_index, glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
     blit_pipeline.Submit(image_index);
-    rt_descriptor_set.current_image_base = (rt_descriptor_set.current_image_base + 1) % 2;
+    //rt_descriptor_set.current_image_base = (rt_descriptor_set.current_image_base + 1) % 2;
     imgui_context.Render(command_buffer);
 
     ///////////////////////////////////////////////////////////////////////////

@@ -25,16 +25,16 @@ layout(std430, set = 0, binding = 6) buffer Materials
 };
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
-layout(set = 0, binding = 7, rgba32f) uniform image2D out_final_image;
-layout(set = 0, binding = 8) uniform sampler2D in_final_image;
-layout(std430, set = 0, binding = 9) buffer Lights
+layout(set = 0, binding = 11, rgba32f) uniform image2D out_final_image;
+layout(set = 0, binding = 12) uniform sampler2D in_final_image;
+layout(std430, set = 0, binding = 13) buffer Lights
 {
     Light lights[];
 };
-layout(set = 0, binding = 10) uniform sampler2D diffuse_textures[256];
-layout(set = 0, binding = 11) uniform sampler2D roughness_textures[256];
-layout(set = 0, binding = 12) uniform sampler2D metalness_textures[256];
-layout(set = 0, binding = 13) uniform sampler2D normal_textures[256];
+layout(set = 0, binding = 7) uniform sampler2D diffuse_textures[256];
+layout(set = 0, binding = 8) uniform sampler2D roughness_textures[256];
+layout(set = 0, binding = 9) uniform sampler2D metalness_textures[256];
+layout(set = 0, binding = 10) uniform sampler2D normal_textures[256];
 
 layout(set = 0, binding = 14, rgba16f) uniform image2D out_normal_image;
 layout(set = 0, binding = 15) uniform sampler2D in_normal_image;
@@ -588,23 +588,23 @@ void main()
     uint num_samples = push_constants.num_indirect_samples;
     if (num_samples > 0) {
       mat3 tbn = tangentSpace(ch_prd.normal);
+      for(int i=0; i<num_samples; i++) {
+        float u1 = (float(i) + randf(frameSeed)) / float(num_samples);
+        float u2 = randf(frameSeed);
+        vec3 dir = tbn * cosineSampleHemisphere(u1, u2);
+
+        vec3 L_bounce = TraceIndirectBounce(ch_prd.position, ch_prd.normal, dir, normalize(-direction.xyz), frameSeed + uint(i) * 9973u);
+        L_bounce /= float(num_samples);
+
+        float luminance = dot(L_bounce, vec3(0.2126, 0.7152, 0.0722));
+        L_bounce *= min(1.0, 4.0 / max(luminance, 0.0001));
+
+        vec3 brdf = chooseBRDF(ch_prd.normal, normalize(-direction.xyz), dir, albedo, roughness, metalness, specularity);
+        float NdotL = max(dot(ch_prd.normal, dir), 0.0);
+        final_color += L_bounce * brdf * NdotL;
+      }
     }
 
-    for(int i=0; i<num_samples; i++) {
-      float u1 = (float(i) + randf(frameSeed)) / float(num_samples);
-      float u2 = randf(frameSeed);
-      vec3 dir = tbn * cosineSampleHemisphere(u1, u2);
-
-      vec3 L_bounce = TraceIndirectBounce(ch_prd.position, ch_prd.normal, dir, normalize(-direction.xyz), frameSeed + uint(i) * 9973u);
-      L_bounce /= float(num_samples);
-
-      float luminance = dot(L_bounce, vec3(0.2126, 0.7152, 0.0722));
-      L_bounce *= min(1.0, 4.0 / max(luminance, 0.0001));
-
-      vec3 brdf = chooseBRDF(ch_prd.normal, normalize(-direction.xyz), dir, albedo, roughness, metalness, specularity);
-      float NdotL = max(dot(ch_prd.normal, dir), 0.0);
-      final_color += L_bounce * brdf * NdotL;
-    }
     final_color += albedo * vec3(0.005); // Add a small ambient term to prevent pure black shadows
     imageStore(out_normal_image, ivec2(gl_LaunchIDEXT.xy), vec4(normalize(ch_prd.normal) * 0.5 + 0.5, 1.0));
     if (push_constants.taa_blend != 0u) {

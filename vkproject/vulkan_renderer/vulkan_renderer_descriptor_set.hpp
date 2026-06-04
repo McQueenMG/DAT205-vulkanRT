@@ -39,7 +39,7 @@ struct DescriptorSet
                             vk::ImageLayout image_layout = vk::ImageLayout::eGeneral);
     using DescriptorInput =
         std::variant<vk::AccelerationStructureKHR*, BufferUtils::Buffer*, vk::ImageView*, std::vector<vk::ImageView*>>;
-    void Update(const std::vector<DescriptorInput>& input);
+    void Update(const std::vector<DescriptorSet::DescriptorInput> &input_data, uint32_t descriptor_start_index);
 
     vk::DescriptorPool descriptor_pool;
     vk::DescriptorSetLayout descriptor_set_layout;
