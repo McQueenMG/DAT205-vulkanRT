@@ -60,6 +60,13 @@ public:
 
         entity_manager.ClearAll();
         used_assets.clear();
+        is_left=true;
+        box_position1=0;
+        box_position2=0;
+        tunnel_counter=0;
+        tunnel_entities.clear();
+        cam_locked_to_car = false;
+
 
         const std::filesystem::path source_path(__FILE__);
         const std::filesystem::path vkproject_root = source_path.parent_path().parent_path();
@@ -127,8 +134,14 @@ public:
         
         auto& light_entity = entity_manager.Create();
         light_entity.AddComponent<LightComponent>(glm::vec3(-3.0f, -5.0f, -5.0f), glm::vec3(8.0f, 8.0f, -8.0f));
-        
-        glm::vec3 tunnel_pos1(0.0f, 0.0f, -1.15f);
+        create_start_tunnel(); 
+       
+
+        used_assets = {car_asset_id, road_asset_id, tunnel_asset_id, box_asset_id};
+    }
+
+    void create_start_tunnel(){
+         glm::vec3 tunnel_pos1(0.0f, 0.0f, -1.15f);
         tunnel_entities.push_back(createTunnelPart(entity_manager, tunnel_pos1, tunnel_asset_id));
 
         glm::vec3 tunnel_pos2(28.0f, 0.0f, -1.15f);
@@ -139,8 +152,6 @@ public:
 
         glm::vec3 tunnel_pos4(84.0f, 0.0f, -1.15f);
         tunnel_entities.push_back(createTunnelPart(entity_manager, tunnel_pos4, tunnel_asset_id));
-
-        used_assets = {car_asset_id, road_asset_id, tunnel_asset_id, box_asset_id};
     }
 
     tunnel_part createTunnelPart(ecs::EntityManager& entity_manager, const glm::vec3& tunnelPos, uint32_t tunnelId)
@@ -295,11 +306,25 @@ public:
                 dr->direction = car_direction;
             }
         }
-        if (car_pos.x>10.0f+28.0f*tunnel_counter || car_pos.x==20.0f+28.0f*tunnel_counter) {
-            
-            
-
+        //if (car_pos.x>10.0f+28.0f*tunnel_counter) {
+        // if (tunnel_x-5<car_pos<tunnel_x+5)
+        if(tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 8.0f < car_pos.x && car_pos.x < tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 12.0f) { 
+            if (is_left && tunnel_entities.front().box_position1==0){
+                Reset();
+            }else if (!is_left && tunnel_entities.front().box_position1==1)
+            {
+                Reset();
+            }
         }
+        if(tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 18.0f < car_pos.x && car_pos.x < tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 22.0f) { 
+            if (is_left && tunnel_entities.front().box_position2==0){
+                Reset();
+            }else if (!is_left && tunnel_entities.front().box_position2==1)
+            {
+                Reset();
+            }
+        }
+        //elseif(car_pos.x==20.0f+28.0f*tunnel_counter)
         if (car_pos.x > tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 30.0f)
         {
             glm::vec3 new_tunnel_pos(tunnel_entities.back().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 28.0f, 0.0f, -1.15f);
@@ -316,7 +341,20 @@ public:
 
     }
 
-    
+    void Reset()
+    {
+        for (auto& tunnel_part : tunnel_entities)
+        {
+            removeTunnelPart(entity_manager, tunnel_part);
+        }
+        tunnel_entities.clear();
+        tunnel_counter=0;
+        is_left=true;
+        create_start_tunnel();
+        car_pos = glm::vec3(0.0f, 0.5f, 0.0f);
+
+    }
+
     void Destroy() override
     {
         entity_manager.ClearAll();
