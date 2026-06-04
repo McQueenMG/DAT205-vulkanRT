@@ -384,7 +384,20 @@ public:
     
 
 
-        if (input && input->IsJustPressed(L)) { cam_locked_to_car = !cam_locked_to_car; }
+        if (input && input->IsJustPressed(L)) 
+        { 
+            if (cam_locked_to_car)
+            {
+                cam_locked_to_car = false;
+                // pause the start timer
+                pause_time = std::chrono::steady_clock::now();
+
+            }
+            else{
+                cam_locked_to_car = true;
+                start = pause_time;
+            }
+        }
 
 
     }
@@ -447,6 +460,7 @@ private:
     const float mouse_sensitivity = 0.005f;
     double prev_mouse_x = 0.0, prev_mouse_y = 0.0;
     bool timerhasstarted = false;
+    std::chrono::steady_clock::time_point pause_time;
 
     float yaw   = glm::half_pi<float>();
     float pitch = 0.438f;
