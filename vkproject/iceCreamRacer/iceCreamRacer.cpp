@@ -66,6 +66,7 @@ public:
         tunnel_counter=0;
         tunnel_entities.clear();
         cam_locked_to_car = false;
+        game_over_popup_open = false;
 
 
         const std::filesystem::path source_path(__FILE__);
@@ -307,14 +308,30 @@ public:
                     final_duration = std::chrono::duration_cast<std::chrono::duration<double>>(fin - start).count();
                     stop_timer=false;
                 }
-                ImGui::Begin("Game Over", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs);
-                ImGui::Text("You hit a box! Time: %.3f s", final_duration);
-                ImGui::End();
-            } else {
-                ImGui::Begin("Duration", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs);
-                ImGui::Text("Time: %.3f s", run_duration);
-                ImGui::End();
-            }
+                if (!game_over_popup_open) {
+                    ImGui::OpenPopup("Game Over");
+                    game_over_popup_open = true;
+                }
+                if (ImGui::BeginPopupModal("Game Over", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+                    ImGui::Text("You hit a box! Time: %.3f s", final_duration);
+                    ImGui::Separator();
+                    ImGui::TextUnformatted("Press R to restart, ESC to exit");
+                    if (input && input->IsJustPressed(R)) {
+                        Reset();
+                    }
+                    if (input && input->IsJustPressed(ESCAPE)) {
+                        if (vk_renderer && vk_renderer->context.glfw_window) {
+                            glfwSetWindowShouldClose(vk_renderer->context.glfw_window, GLFW_TRUE);
+                        }
+                    }
+                    ImGui::EndPopup();
+                }
+            } 
+            //else {
+            //     ImGui::Begin("Duration", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs);
+            //     ImGui::Text("Time: %.3f s", run_duration);
+            //     ImGui::End();
+            // }
         }
         
         if (car_entity)
@@ -370,6 +387,7 @@ public:
         car_speed=0.0f;
         game_over=true;
         stop_timer=true;
+        game_over_popup_open = false;
         if(input && input->IsJustPressed(R)) {
             Reset();
         }
@@ -389,6 +407,7 @@ public:
         create_start_tunnel();
         car_direction = glm::vec3(0.1f, 0.0f, 0.0f);
         car_pos = glm::vec3(0.0f, 0.5f, 0.0f);
+   
 
     }
 
@@ -433,6 +452,7 @@ private:
     double final_duration=0.0;
     bool game_over=false;
     bool stop_timer=false;
+    bool game_over_popup_open=false;
     std::chrono::steady_clock::time_point start;
 
 };
