@@ -586,7 +586,10 @@ void main()
     ///////////////////////////////////////////////////////////////////////////
 
     uint num_samples = push_constants.num_indirect_samples;
-    mat3 tbn = tangentSpace(ch_prd.normal);
+    if (num_samples > 0) {
+      mat3 tbn = tangentSpace(ch_prd.normal);
+    }
+
     for(int i=0; i<num_samples; i++) {
       float u1 = (float(i) + randf(frameSeed)) / float(num_samples);
       float u2 = randf(frameSeed);

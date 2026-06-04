@@ -132,9 +132,6 @@ public:
         // box_entity.AddComponent<StaticRenderable>(glm::vec3(2.0f, 0.5f, 0.0f), box_asset_id);
         // box_entity.GetComponent<StaticRenderable>()->variation = 0;
         
-        
-        auto& light_entity = entity_manager.Create();
-        light_entity.AddComponent<LightComponent>(glm::vec3(-3.0f, -5.0f, -5.0f), glm::vec3(8.0f, 8.0f, -8.0f));
         create_start_tunnel(); 
        
 
