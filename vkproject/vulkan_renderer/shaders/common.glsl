@@ -28,6 +28,10 @@ struct PushConstants
   uint frame; 
   uint num_lights;
   uint num_indirect_samples; 
+  uint taa_blend;
+  uint enable_reflections;
+  uint max_lights;
+  float jitter_factor;
 };
 
 struct hitPayload

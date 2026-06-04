@@ -335,7 +335,7 @@ private:
     glm::vec3 car_pos;
     bool cam_locked_to_car = false;
 
-    const float car_speed = 20.0f;
+    const float car_speed = 200.0f;
     const float car_turn_speed = 0.005f;
     const float camera_speed      = 0.05f;
     const float mouse_sensitivity = 0.005f;

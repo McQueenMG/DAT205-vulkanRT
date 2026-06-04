@@ -3,7 +3,7 @@
 #extension GL_EXT_nonuniform_qualifier : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 #include "common.glsl"
-
+#define MAX_LIGHTS 64
 // Steps the RNG and returns a floating-point value between 0 and 1 inclusive.
 float randf(inout uint rngState)
 {
@@ -35,6 +35,9 @@ layout(set = 0, binding = 10) uniform sampler2D diffuse_textures[256];
 layout(set = 0, binding = 11) uniform sampler2D roughness_textures[256];
 layout(set = 0, binding = 12) uniform sampler2D metalness_textures[256];
 layout(set = 0, binding = 13) uniform sampler2D normal_textures[256];
+
+layout(set = 0, binding = 14, rgba16f) uniform image2D out_normal_image;
+layout(set = 0, binding = 15) uniform sampler2D in_normal_image;
 
 
 vec3 Environment(vec3 d)
@@ -84,9 +87,6 @@ bool RefractRay(vec3 I, vec3 N, float eta, out vec3 T)
     T = eta * I + (eta * cosi - cost) * N;
     return true;
 }
-
-
-
 
 
 float ShininessToRoughness(float s)
@@ -181,77 +181,194 @@ vec3 chooseBRDF(vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float meta
 }
 
 bool ShouldTraceReflection(
-    float roughness,
-    float metalness,
-    float specularity,
-    float opacity,
-    vec3 f0,
-    float cosTheta)
+  float roughness,
+  float metalness,
+  float specularity,
+  float opacity,
+  vec3 f0,
+  float cosTheta)
 {
-    if (opacity < 0.05)   return false;
-    if (roughness > 0.6)  return false;  // tighter — rough surfaces don't need a mirror ray
-    if (metalness > 0.5)  return true;   // metals always reflect
+  if (opacity < 0.05)   return false;
+  if (roughness > 0.6)  return false;  // tighter — rough surfaces don't need a mirror ray
+  if (metalness > 0.5)  return true;   // metals always reflect
 
-    // Only bother for genuinely specular dielectrics
-    if (specularity > 0.5 && roughness < 0.4) return true;
+  // Only bother for genuinely specular dielectrics
+  if (specularity > 0.5 && roughness < 0.4) return true;
 
-    // Grazing angle Fresnel on smooth surfaces
-    vec3 fres = FresnelSchlick(cosTheta, f0);
-    if (max(max(fres.r, fres.g), fres.b) > 0.3 && roughness < 0.3) return true;
+  // Grazing angle Fresnel on smooth surfaces
+  vec3 fres = FresnelSchlick(cosTheta, f0);
+  if (max(max(fres.r, fres.g), fres.b) > 0.3 && roughness < 0.3) return true;
 
-    return false;
+  return false;
+}
+
+uint getFrameSeed()
+{
+  return push_constants.frame * gl_LaunchSizeEXT.x * gl_LaunchSizeEXT.y + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y + gl_LaunchIDEXT.x;
+}
+
+uint importanceSampling(vec3 position, vec3 normal, inout uint seed)
+{
+  uint num_lights_to_sample = min(push_constants.num_lights, push_constants.max_lights);
+  float weights[MAX_LIGHTS];
+  float totalWeight = 0.0;
+
+  for (uint i = 0; i < num_lights_to_sample; i++)
+  {
+    vec3 wi = normalize(lights[i].position - position);
+    float dist = length(lights[i].position - position);
+    float NdotL = max(dot(normal, wi), 0.0);
+    float weight = NdotL / (dist * dist + 0.001); // Avoid division by zero
+    weights[i] = weight;
+    totalWeight += weight;
+  } 
+
+  if (totalWeight < 0.001) {
+    // If all weights are near zero, fall back to uniform sampling
+    return uint(randf(seed) * float(num_lights_to_sample));
+  }
+
+  float r = randf(seed) * totalWeight;
+  float cumulativeWeight = 0.0;
+  for (uint i = 0; i < num_lights_to_sample; i++)
+  {
+    cumulativeWeight += weights[i];
+    if (r <= cumulativeWeight)
+    {
+      return i;
+    }
+  }
+  return num_lights_to_sample - 1; // Shouldn't reach here, but just in case of floating-point issues
 }
 
 
+
 vec3 ShadeDirectOnly(
-    vec3 p, vec3 wo, vec3 n,
-    vec3 albedo, float roughness, float metalness,
-    float specularity, float opacity)
+  vec3 p, vec3 wo, vec3 n,
+  vec3 albedo, float roughness, float metalness,
+  float specularity, float opacity)
 {
   vec3 direct_light = vec3(0.0);
   vec3 dielectric_f0 = vec3(0.04) * specularity;
   vec3 f0 = mix(dielectric_f0, albedo, metalness);
+  uint local_seed = getFrameSeed() + 1000003u;
+  uint num_lights_to_sample = min(push_constants.num_lights, push_constants.max_lights);
+  float total_w = 0.0;
+  for (uint j = 0; j < push_constants.num_lights; j++) {
+    vec3 wj = normalize(lights[j].position - p);
+    float dj = length(lights[j].position - p);
+    total_w += max(dot(n, wj), 0.0) / max(dj * dj, 0.001);
+  }
 
-  for (int i = 0; i < push_constants.num_lights; i++)
+  for (uint i = 0; i < num_lights_to_sample; i++)
   {
-    vec3 wi   = normalize(lights[i].position - p);
-    float dist = length(lights[i].position - p);
+    uint index = importanceSampling(p, n, local_seed);
+    vec3 wi    = normalize(lights[index].position - p);
+    float dist = length(lights[index].position - p);
+    float ndotl = max(dot(n, wi), 0.0);
+    float w = ndotl / (dist * dist + 0.001); 
 
-    if (!ShadowRay(p, n, lights[i].position))
+    
+    
+    float pdf = w / max(total_w, 0.0001);
+
+    if (!ShadowRay(p, n, lights[index].position) && pdf > 0.0)
     {
-      vec3 L = lights[i].intensity * (1.0 / (dist * dist));
-      float ndotl = max(dot(n, wi), 0.0);
-      vec3 brdf  = chooseBRDF(n, wo, wi, albedo, roughness, metalness, specularity);
-      direct_light += L * brdf * ndotl;
+      vec3 L     = lights[index].intensity * (1.0 / (dist * dist));
+      vec3 contrib = L * chooseBRDF(n, wo, wi, albedo, roughness, metalness, specularity) * ndotl / pdf;
+      direct_light += contrib / float(num_lights_to_sample);
     }
   }
   return direct_light;
 }
 
 
+vec3 TraceIndirectBounce(
+  vec3 origin, vec3 normal, vec3 dir, vec3 view_dir, uint seed
+)
+{
+  hitPayload saved = prd;
+  prd.hit = false;
+  traceRayEXT(topLevelAS, 0, 0xFF, 0, 0, 0, origin + 0.01 * normal, 0.001, dir, 1000.0, 0);
+  vec3 result = vec3(0.0);
+
+  if (prd.hit)
+  {
+    Material hit_mat = materials[prd.mat_id];
+    vec3 hit_albedo = hit_mat.color.xyz;
+    if (hit_mat.diffuse_texture_index >= 0 && hit_mat.diffuse_texture_index < 256)
+    {
+      hit_albedo *= texture(diffuse_textures[nonuniformEXT(uint(hit_mat.diffuse_texture_index))], prd.uv).rgb;
+    }
+    float hit_roughness = ShininessToRoughness(hit_mat.shininess);
+    float hit_metalness = clamp(hit_mat.metalness, 0.0, 1.0);
+    float hit_specularity = clamp(hit_mat.specularity, 0.0, 1.0);
+
+    result = ShadeDirectOnly(
+      prd.position,
+      -dir,
+      normalize(prd.normal),
+      hit_albedo,
+      hit_roughness,
+      hit_metalness,
+      hit_specularity,
+      clamp(hit_mat.opacity, 0.0, 1.0)
+    );
+    result += hit_mat.emittance * hit_albedo;
+  }
+  else
+  {
+    result = Environment(dir);
+  }
+
+  prd = saved;
+  return result;
+}
+
+
 
 vec3 CalculateDirectIllumination(
-    vec3 p, vec3 wo, vec3 n,
-    vec3 albedo, float roughness, float metalness,
-    float specularity, float opacity)
+  vec3 p, vec3 wo, vec3 n,
+  vec3 albedo, float roughness, float metalness,
+  float specularity, float opacity)
 {
   vec3 direct_light  = vec3(0.0);
   vec3 dielectric_f0 = vec3(0.04) * specularity;
   vec3 f0 = mix(dielectric_f0, albedo, metalness);
 
-  for (int i = 0; i < push_constants.num_lights; i++)
-  {
-      vec3 wi    = normalize(lights[i].position - p);
-      float dist = length(lights[i].position - p);
+  uint local_seed = getFrameSeed() + 0u;
+  uint num_lights_to_sample = min(push_constants.num_lights, push_constants.max_lights);
 
-      if (!ShadowRay(p, n, lights[i].position))
-      {
-          vec3 L     = lights[i].intensity * (1.0 / (dist * dist));
-          float ndotl = max(dot(n, wi), 0.0);
-          vec3 brdf  = chooseBRDF(n, wo, wi, albedo, roughness, metalness, specularity);
-          direct_light += L * brdf * ndotl;
-      }
+  float total_w = 0.0;
+  for (uint j = 0; j < push_constants.num_lights; j++) {
+    vec3 wj = normalize(lights[j].position - p);
+    float dj = length(lights[j].position - p);
+    total_w += max(dot(n, wj), 0.0) / max(dj * dj, 0.001);
   }
+
+  float jitter_amount = push_constants.jitter_factor; 
+
+  for (uint i = 0; i < num_lights_to_sample; i++)
+  {
+    uint index = importanceSampling(p, n, local_seed);
+    vec3 wi    = normalize(lights[index].position - p);
+    float dist = length(lights[index].position - p);
+    float ndotl = max(dot(n, wi), 0.0);
+    float w = ndotl / (dist * dist + 0.001); 
+    float pdf = w / max(total_w, 0.0001);
+
+    vec3 jitter = vec3(randf(local_seed) * 2 - 1, randf(local_seed) * 2 - 1, randf(local_seed) * 2 - 1) * jitter_amount;
+    vec3 shadowTarget = lights[index].position + jitter; 
+
+    if (!ShadowRay(p, n, shadowTarget) && pdf > 0.0)
+    {
+      vec3 L     = lights[index].intensity * (1.0 / (dist * dist));
+      vec3 contrib = L * chooseBRDF(n, wo, wi, albedo, roughness, metalness, specularity) * ndotl / pdf;
+      direct_light += contrib / float(num_lights_to_sample);
+    }
+  }
+
+  bool reflectionEnabled = push_constants.enable_reflections != 0u;
 
   float cosTheta = max(0.0, dot(n, wo));
   vec3 fresnel   = FresnelSchlick(cosTheta, f0);
@@ -260,7 +377,7 @@ vec3 CalculateDirectIllumination(
   vec3 reflectColor = vec3(0.0);
   vec3 refractColor = vec3(0.0);
 
-  if (ShouldTraceReflection(roughness, metalness, specularity, opacity, f0, cosTheta))
+  if (reflectionEnabled && ShouldTraceReflection(roughness, metalness, specularity, opacity, f0, cosTheta))
   {
     vec3 reflectDir = reflect(-wo, n);
     hitPayload saved = prd;
@@ -338,9 +455,24 @@ vec3 CalculateDirectIllumination(
   }
 }
 
+vec3 RGBToYCoCg(vec3 rgb)
+{
+    return vec3(
+         0.25*rgb.r + 0.5*rgb.g + 0.25*rgb.b,
+         0.5*rgb.r               - 0.5*rgb.b,
+        -0.25*rgb.r + 0.5*rgb.g - 0.25*rgb.b
+    );
+}
+
+vec3 YCoCgToRGB(vec3 rgb) {
+    float tmp = rgb.x - rgb.z;
+    return vec3(tmp + rgb.y, rgb.x + rgb.z, tmp - rgb.y);
+}
+
 
 vec3 TAA(vec3 final_color, hitPayload ch_prd, vec2 inUV)
 {
+
   vec4 prev_clip = push_constants.prev_view_proj * vec4(ch_prd.prev_position, 1.0);
   vec2 prev_ndc = prev_clip.xy / prev_clip.w;
   vec2 prev_uv = prev_ndc * 0.5 + 0.5;
@@ -348,24 +480,57 @@ vec3 TAA(vec3 final_color, hitPayload ch_prd, vec2 inUV)
   bool valid_history = all(greaterThanEqual(prev_uv, vec2(0.0))) && all(lessThanEqual(prev_uv, vec2(1.0)));
 
   if(valid_history && push_constants.frame > 0) {
-    vec3 history_color = texture(in_final_image, prev_uv).rgb;
+    
+    vec3 history_ycocg = RGBToYCoCg(texture(in_final_image, prev_uv).rgb);
+    vec3 current_ycocg = RGBToYCoCg(final_color);
     
     vec3 color_min = vec3(1e9);
     vec3 color_max = vec3(-1e9);
     vec2 texel_size = 1.0 / vec2(gl_LaunchSizeEXT.xy);
     for(int dx = -1; dx <= 1; dx++) {
       for(int dy = -1; dy <= 1; dy++) {
-        vec2 offset = inUV + vec2(dx, dy) * texel_size;
-
-        vec3 neighborhood_color = imageLoad(out_final_image, ivec2(gl_LaunchIDEXT.xy) + ivec2(dx, dy)).rgb;
-        color_min = min(color_min, neighborhood_color);
-        color_max = max(color_max, neighborhood_color);
+        vec2 neighbor_uv = inUV + vec2(dx, dy) * (1.0 / vec2(gl_LaunchSizeEXT.xy));
+        vec3 neighbor = RGBToYCoCg(texture(in_final_image, neighbor_uv).rgb);
+        color_min = min(color_min, neighbor);
+        color_max = max(color_max, neighbor);
       }
     }
-    history_color = clamp(history_color, color_min, color_max);
 
-    float blend_factor = 0.1; // Could be based on motion or other heuristics
-    return mix(final_color, history_color, blend_factor);
+    vec3 history_color = clamp(history_ycocg, color_min, color_max);
+    float blend_factor = 0.9; 
+
+    /////////////////////////////////////////////////////////////
+    // Speed-based blending factor to reduce ghosting artifacts//
+    /////////////////////////////////////////////////////////////
+    vec2 motion = inUV - prev_uv;
+    float speed_pixels = length(motion) * length(vec2(gl_LaunchSizeEXT.xy));
+
+    // Change blending based on texel movement to improve ghosting artifacts
+    float motion_blend = clamp(speed_pixels / 3.0, 0.0, 1.0);
+    blend_factor = mix(0.9, 0.0, motion_blend);
+
+    //////////////////////////////////////////////////////////////
+    // Depth-based blending factor to reduce ghosting artifacts //
+    // Ignoring this for now since it accomplishes the same     //
+    // thing as the normal-based factor                         //
+    //////////////////////////////////////////////////////////////
+
+    // float depth = prev_clip.z / prev_clip.w;
+    // float depth_blend_factor = clamp(depth / 100.0, 0.0, 1.0);
+    // float blend_factor = mix(0.1, 0.5, depth_blend_factor);
+
+    /////////////////////////////////////////////////////////////
+    //normal-based blending factor to reduce ghosting artifacts//
+    /////////////////////////////////////////////////////////////
+    vec3 prev_normal = texture(in_normal_image, prev_uv).xyz * 2.0 - 1.0; 
+    float normal_similarity = dot(normalize(ch_prd.normal), normalize(prev_normal));
+    if(normal_similarity < 0.5) {
+      blend_factor = 0.0;
+    }
+
+    vec3 result_ycocg = mix(current_ycocg, history_color, blend_factor);
+    // clamp to positive to avoid weird artifacts from negative values in the YCoCg space
+    return max(vec3(0.0), YCoCgToRGB(result_ycocg));
   }
   else {
     return final_color;
@@ -375,7 +540,7 @@ vec3 TAA(vec3 final_color, hitPayload ch_prd, vec2 inUV)
 
 void main()
 {
-  uint seed = push_constants.frame * gl_LaunchSizeEXT.x * gl_LaunchSizeEXT.y + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y + gl_LaunchIDEXT.x; 
+  uint frameSeed = getFrameSeed();
   const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5, 0.5);
   const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
   vec2       d           = inUV * 2.0 - 1.0;
@@ -417,26 +582,34 @@ void main()
     final_color += shaded_material.emittance * albedo;
 
     ///////////////////////////////////////////////////////////////////////////
-    // Direct Simple and slow indirect (environment) illumination
+    // Direct Simple and slow indirect (environment) illuminationw
     ///////////////////////////////////////////////////////////////////////////
+
     uint num_samples = push_constants.num_indirect_samples;
+    mat3 tbn = tangentSpace(ch_prd.normal);
     for(int i=0; i<num_samples; i++) {
-        vec3 dir = cosineSampleHemisphere(randf(seed), randf(seed));
-        if(!ShadowRay(ch_prd.position, ch_prd.normal, ch_prd.position + 1000.0 * dir))
-        {
-            vec3 L_env = (1.0 / float(num_samples)) * Environment(dir);
+      float u1 = (float(i) + randf(frameSeed)) / float(num_samples);
+      float u2 = randf(frameSeed);
+      vec3 dir = tbn * cosineSampleHemisphere(u1, u2);
 
-            // remove fireflies
-            float luminance = dot(L_env, vec3(0.2126, 0.7152, 0.0722));
-            L_env = L_env * min(1.0, 4.0 / max(luminance, 0.0001));
+      vec3 L_bounce = TraceIndirectBounce(ch_prd.position, ch_prd.normal, dir, normalize(-direction.xyz), frameSeed + uint(i) * 9973u);
+      L_bounce /= float(num_samples);
 
-            
-            vec3 brdf = chooseBRDF(ch_prd.normal, normalize(-direction.xyz), dir, albedo, roughness, metalness, specularity);
-            float NdotL = max(dot(ch_prd.normal, dir), 0.0);
-            final_color += L_env * brdf * NdotL; 
-        }
+      float luminance = dot(L_bounce, vec3(0.2126, 0.7152, 0.0722));
+      L_bounce *= min(1.0, 4.0 / max(luminance, 0.0001));
+
+      vec3 brdf = chooseBRDF(ch_prd.normal, normalize(-direction.xyz), dir, albedo, roughness, metalness, specularity);
+      float NdotL = max(dot(ch_prd.normal, dir), 0.0);
+      final_color += L_bounce * brdf * NdotL;
     }
-    final_color = TAA(final_color, ch_prd, inUV);
+    final_color += albedo * vec3(0.005); // Add a small ambient term to prevent pure black shadows
+    imageStore(out_normal_image, ivec2(gl_LaunchIDEXT.xy), vec4(normalize(ch_prd.normal) * 0.5 + 0.5, 1.0));
+    if (push_constants.taa_blend != 0u) {
+      final_color = TAA(final_color, ch_prd, inUV);
+    } else {
+      final_color = clamp(final_color, vec3(0.0), vec3(1.0));
+    }
+    // final_color = TAA(final_color, ch_prd, inUV);
     imageStore(out_final_image, ivec2(gl_LaunchIDEXT.xy), vec4(final_color, 1.0));
   }
   else {

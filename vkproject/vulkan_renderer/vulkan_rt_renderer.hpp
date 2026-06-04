@@ -80,7 +80,11 @@ struct VulkanRTRenderer : public IRenderer
         vk::StridedDeviceAddressRegionKHR sbt_hit_region{};
         void Create();
         void Destroy();
-        int num_indirect_samples = 16; 
+        int num_indirect_samples = 0; 
+        bool taa_blend = true;
+        bool enable_reflections = true;
+        int max_lights = 4;
+        float jitter_factor = 0.1f;
         #define MAX_NUM_LIGHTS 1000
         uint32_t num_lights; 
         BufferUtils::Buffer lights_buffer[MAX_FRAMES_IN_FLIGHT]; 

@@ -184,6 +184,16 @@ void VulkanRTRenderer::RT_Pipeline::Submit(const glm::mat4 &P, const glm::mat4 &
     pc.prev_view_proj = prev_view_proj;
     pc.num_lights = num_lights;
     pc.num_indirect_samples = num_indirect_samples;
+    if (taa_blend)
+        pc.taa_blend = 1u; // Enable TAA blending
+    else
+        pc.taa_blend = 0u; // Disable TAA blending
+    if (enable_reflections)
+        pc.enable_reflections = 1u; // Enable reflections
+    else
+        pc.enable_reflections = 0u; // Disable reflections
+    pc.max_lights = max_lights;
+    pc.jitter_factor = jitter_factor;
     // Storing current PV for next frame
     prev_view_proj = P * V;
 
