@@ -220,6 +220,7 @@ public:
         if (!renderer) return;
         
         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+
         VulkanRTRenderer* vk_renderer = static_cast<VulkanRTRenderer*>(renderer);
         if (!vk_renderer) return;
         GLFWwindow* glfw_win = vk_renderer->context.glfw_window;
@@ -279,7 +280,11 @@ public:
             glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), car_yaw, world_up);
             glm::vec3 rotated_offset = glm::vec3(rotation * glm::vec4(car_offset, 1.0f));
             camera_eye = car_pos + rotated_offset;
-            camera_target = car_pos;  
+            camera_target = car_pos;
+            if (!game_over) 
+            {
+                car_speed+=car_speed_increment*dt;
+            }  
             car_pos += car_direction * car_speed * dt;
             //if (input && input->IsPressed(W)) {car_pos += car_direction * car_speed;}
             //if (input && input->IsPressed(S)) {car_pos -= car_direction * car_speed;}
@@ -344,7 +349,6 @@ public:
             }
         }
         std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-        run_duration = std::chrono::duration_cast<std::chrono::duration<double>>(begin - start).count();
         //if (car_pos.x>10.0f+28.0f*tunnel_counter) {
         // if (tunnel_x-5<car_pos<tunnel_x+5)
         if(!game_over) {
@@ -377,6 +381,7 @@ public:
         
         renderer->SetCamera(camera_eye, camera_target, world_up);
         
+    
 
 
         if (input && input->IsJustPressed(L)) { cam_locked_to_car = !cam_locked_to_car; }
@@ -436,6 +441,7 @@ private:
     bool cam_locked_to_car = false;
 
     float car_speed = 20.0f;
+    float car_speed_increment = 2.5f;
     const float car_turn_speed = 0.05f;
     const float camera_speed      = 0.05f;
     const float mouse_sensitivity = 0.005f;
