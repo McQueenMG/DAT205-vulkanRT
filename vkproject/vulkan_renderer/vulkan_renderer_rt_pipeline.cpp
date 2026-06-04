@@ -91,7 +91,7 @@ void VulkanRTRenderer::RT_Pipeline::Create()
     // as possible for performance reasons. Even recursive ray tracing should be flattened into a loop
     // in the ray generation to avoid deep recursion.
     // Added one more for reflecttion ray
-    rayPipelineInfo.maxPipelineRayRecursionDepth = 3; // Ray depth
+    rayPipelineInfo.maxPipelineRayRecursionDepth = 2; // Ray depth
     rayPipelineInfo.layout = pipeline_layout;
 
     pipeline = context.device.createRayTracingPipelineKHR({}, {}, rayPipelineInfo).value;

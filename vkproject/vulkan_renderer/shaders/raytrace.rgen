@@ -31,10 +31,10 @@ layout(std430, set = 0, binding = 9) buffer Lights
 {
     Light lights[];
 };
-layout(set = 0, binding = 10) uniform sampler2D diffuse_textures[256];
-layout(set = 0, binding = 11) uniform sampler2D roughness_textures[256];
-layout(set = 0, binding = 12) uniform sampler2D metalness_textures[256];
-layout(set = 0, binding = 13) uniform sampler2D normal_textures[256];
+layout(set = 0, binding = 10) uniform sampler2D diffuse_textures[128];
+layout(set = 0, binding = 11) uniform sampler2D roughness_textures[128];
+layout(set = 0, binding = 12) uniform sampler2D metalness_textures[128];
+layout(set = 0, binding = 13) uniform sampler2D normal_textures[128];
 
 layout(set = 0, binding = 14, rgba16f) uniform image2D out_normal_image;
 layout(set = 0, binding = 15) uniform sampler2D in_normal_image;
@@ -171,7 +171,6 @@ vec3 chooseBRDF(vec3 N, vec3 V, vec3 L, vec3 albedo, float roughness, float meta
     }
     else
     {
-      // Lambertian + Blinn-Phong specular as a simple fallback for smooth dielectrics
       vec3 diffuse = (albedo / PI) * (1.0 - metalness) * (1.0 - F);
       float specular_power = mix(512.0, 8.0, roughness);
       vec3 specular = F * pow(NdotH, specular_power);
@@ -189,13 +188,11 @@ bool ShouldTraceReflection(
   float cosTheta)
 {
   if (opacity < 0.05)   return false;
-  if (roughness > 0.6)  return false;  // tighter — rough surfaces don't need a mirror ray
-  if (metalness > 0.5)  return true;   // metals always reflect
+  if (roughness > 0.6)  return false;  
+  if (metalness > 0.5)  return true;  
 
-  // Only bother for genuinely specular dielectrics
   if (specularity > 0.5 && roughness < 0.4) return true;
 
-  // Grazing angle Fresnel on smooth surfaces
   vec3 fres = FresnelSchlick(cosTheta, f0);
   if (max(max(fres.r, fres.g), fres.b) > 0.3 && roughness < 0.3) return true;
 
@@ -224,7 +221,6 @@ uint importanceSampling(vec3 position, vec3 normal, inout uint seed)
   } 
 
   if (totalWeight < 0.001) {
-    // If all weights are near zero, fall back to uniform sampling
     return uint(randf(seed) * float(num_lights_to_sample));
   }
 
@@ -238,7 +234,7 @@ uint importanceSampling(vec3 position, vec3 normal, inout uint seed)
       return i;
     }
   }
-  return num_lights_to_sample - 1; // Shouldn't reach here, but just in case of floating-point issues
+  return num_lights_to_sample - 1; 
 }
 
 
@@ -296,7 +292,7 @@ vec3 TraceIndirectBounce(
   {
     Material hit_mat = materials[prd.mat_id];
     vec3 hit_albedo = hit_mat.color.xyz;
-    if (hit_mat.diffuse_texture_index >= 0 && hit_mat.diffuse_texture_index < 256)
+    if (hit_mat.diffuse_texture_index >= 0 && hit_mat.diffuse_texture_index < 128)
     {
       hit_albedo *= texture(diffuse_textures[nonuniformEXT(uint(hit_mat.diffuse_texture_index))], prd.uv).rgb;
     }
@@ -391,20 +387,20 @@ vec3 CalculateDirectIllumination(
       Material reflect_mat   = materials[reflect_hit.mat_id];
 
       vec3 reflect_albedo = reflect_mat.color.xyz;
-      if (reflect_mat.diffuse_texture_index >= 0 && reflect_mat.diffuse_texture_index < 256)
+      if (reflect_mat.diffuse_texture_index >= 0 && reflect_mat.diffuse_texture_index < 128)
       {
         reflect_albedo *= texture(diffuse_textures[nonuniformEXT(uint(reflect_mat.diffuse_texture_index))], reflect_hit.uv).rgb;
       }
 
       float reflect_roughness = ShininessToRoughness(reflect_mat.shininess);
-      if (reflect_mat.roughness_texture_index >= 0 && reflect_mat.roughness_texture_index < 256)
+      if (reflect_mat.roughness_texture_index >= 0 && reflect_mat.roughness_texture_index < 128)
       {
 
         reflect_roughness = texture(roughness_textures[nonuniformEXT(uint(reflect_mat.roughness_texture_index))], reflect_hit.uv).r;
       }
 
       float reflect_metalness = clamp(reflect_mat.metalness, 0.0, 1.0);
-      if (reflect_mat.metalness_texture_index >= 0 && reflect_mat.metalness_texture_index < 256)
+      if (reflect_mat.metalness_texture_index >= 0 && reflect_mat.metalness_texture_index < 128)
       {
         reflect_metalness = texture(metalness_textures[nonuniformEXT(uint(reflect_mat.metalness_texture_index))], reflect_hit.uv).r;
       }
@@ -467,6 +463,24 @@ vec3 RGBToYCoCg(vec3 rgb)
 vec3 YCoCgToRGB(vec3 rgb) {
     float tmp = rgb.x - rgb.z;
     return vec3(tmp + rgb.y, rgb.x + rgb.z, tmp - rgb.y);
+}
+
+vec3 SAA(vec3 final_color, hitPayload ch_prd, vec2 inUV)
+{
+  vec4 prev_clip = push_constants.prev_view_proj * vec4(ch_prd.prev_position, 1.0);
+  vec2 prev_ndc = prev_clip.xy / prev_clip.w;
+  vec2 prev_uv = prev_ndc * 0.5 + 0.5;
+
+  bool valid_history = all(greaterThanEqual(prev_uv, vec2(0.0))) && all(lessThanEqual(prev_uv, vec2(1.0)));
+
+  if(valid_history && push_constants.frame > 0) {
+    vec3 history_color = texture(in_final_image, prev_uv).rgb;
+    float blend_factor = 0.9; 
+    return mix(final_color, history_color, blend_factor);
+  }
+  else {
+    return final_color;
+  }
 }
 
 
@@ -558,19 +572,19 @@ void main()
     hitPayload ch_prd = prd; 
     Material shaded_material = materials[ch_prd.mat_id];
     vec3 albedo = shaded_material.color.xyz;
-    if (shaded_material.diffuse_texture_index >= 0 && shaded_material.diffuse_texture_index < 256)
+    if (shaded_material.diffuse_texture_index >= 0 && shaded_material.diffuse_texture_index < 128)
     {
       albedo *= texture(diffuse_textures[nonuniformEXT(uint(shaded_material.diffuse_texture_index))], ch_prd.uv).rgb;
     }
 
     float roughness = ShininessToRoughness(shaded_material.shininess);
-    if (shaded_material.roughness_texture_index >= 0 && shaded_material.roughness_texture_index < 256)
+    if (shaded_material.roughness_texture_index >= 0 && shaded_material.roughness_texture_index < 128)
     {
       roughness = texture(roughness_textures[nonuniformEXT(uint(shaded_material.roughness_texture_index))], ch_prd.uv).r;
     }
 
     float metalness = clamp(shaded_material.metalness, 0.0, 1.0);
-    if (shaded_material.metalness_texture_index >= 0 && shaded_material.metalness_texture_index < 256)
+    if (shaded_material.metalness_texture_index >= 0 && shaded_material.metalness_texture_index < 128)
     {
       metalness = texture(metalness_textures[nonuniformEXT(uint(shaded_material.metalness_texture_index))], ch_prd.uv).r;
     }
@@ -588,24 +602,28 @@ void main()
     uint num_samples = push_constants.num_indirect_samples;
     if (num_samples > 0) {
       mat3 tbn = tangentSpace(ch_prd.normal);
+      for(int i=0; i<num_samples; i++) {
+        float u1 = (float(i) + randf(frameSeed)) / float(num_samples);
+        float u2 = randf(frameSeed);
+        vec3 dir = tbn * cosineSampleHemisphere(u1, u2);
+
+        vec3 L_bounce = TraceIndirectBounce(ch_prd.position, ch_prd.normal, dir, normalize(-direction.xyz), frameSeed + uint(i) * 9973u);
+        L_bounce /= float(num_samples);
+
+        float maxLuminance = 3.0;
+        float luminance = dot(L_bounce, vec3(0.2126, 0.7152, 0.0722));
+
+        if (luminance > maxLuminance) {
+          L_bounce *= maxLuminance / luminance;
+        }
+
+        vec3 brdf = chooseBRDF(ch_prd.normal, normalize(-direction.xyz), dir, albedo, roughness, metalness, specularity);
+        float NdotL = max(dot(ch_prd.normal, dir), 0.0);
+        final_color += L_bounce * brdf * NdotL;
+      }
     }
 
-    for(int i=0; i<num_samples; i++) {
-      float u1 = (float(i) + randf(frameSeed)) / float(num_samples);
-      float u2 = randf(frameSeed);
-      vec3 dir = tbn * cosineSampleHemisphere(u1, u2);
-
-      vec3 L_bounce = TraceIndirectBounce(ch_prd.position, ch_prd.normal, dir, normalize(-direction.xyz), frameSeed + uint(i) * 9973u);
-      L_bounce /= float(num_samples);
-
-      float luminance = dot(L_bounce, vec3(0.2126, 0.7152, 0.0722));
-      L_bounce *= min(1.0, 4.0 / max(luminance, 0.0001));
-
-      vec3 brdf = chooseBRDF(ch_prd.normal, normalize(-direction.xyz), dir, albedo, roughness, metalness, specularity);
-      float NdotL = max(dot(ch_prd.normal, dir), 0.0);
-      final_color += L_bounce * brdf * NdotL;
-    }
-    final_color += albedo * vec3(0.005); // Add a small ambient term to prevent pure black shadows
+    final_color += albedo * vec3(0.005);
     imageStore(out_normal_image, ivec2(gl_LaunchIDEXT.xy), vec4(normalize(ch_prd.normal) * 0.5 + 0.5, 1.0));
     if (push_constants.taa_blend != 0u) {
       final_color = TAA(final_color, ch_prd, inUV);

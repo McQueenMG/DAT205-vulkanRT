@@ -70,19 +70,19 @@ void VulkanRTRenderer::Init(int width, int height)
                                      vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR);
                             
     // binding 10 - diffuse textures
-    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+    rt_descriptor_set.AddDescriptorArray(128, vk::DescriptorType::eCombinedImageSampler,
                                          vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
                                          vk::ImageLayout::eShaderReadOnlyOptimal);
     // binding 11 - roughness textures
-    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
-                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+    rt_descriptor_set.AddDescriptorArray(128, vk::DescriptorType::eCombinedImageSampler,
+                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR,
                                          vk::ImageLayout::eShaderReadOnlyOptimal);
     // binding 12 - metalness textures
-    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
-                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
+    rt_descriptor_set.AddDescriptorArray(128, vk::DescriptorType::eCombinedImageSampler,
+                                         vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR,
                                          vk::ImageLayout::eShaderReadOnlyOptimal);
     // binding 13 - normal textures
-    rt_descriptor_set.AddDescriptorArray(256, vk::DescriptorType::eCombinedImageSampler,
+    rt_descriptor_set.AddDescriptorArray(128, vk::DescriptorType::eCombinedImageSampler,
                                          vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eAnyHitKHR,
                                          vk::ImageLayout::eShaderReadOnlyOptimal);
     // binding 14 — normal output
