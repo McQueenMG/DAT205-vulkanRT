@@ -30,7 +30,7 @@ struct PushConstants
   uint num_indirect_samples; 
   uint taa_blend;
   uint enable_reflections;
-  uint max_lights;
+  uint num_light_samples;
   float jitter_factor;
 };
 

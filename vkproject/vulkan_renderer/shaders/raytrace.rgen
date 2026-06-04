@@ -3,7 +3,7 @@
 #extension GL_EXT_nonuniform_qualifier : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 #include "common.glsl"
-#define MAX_LIGHTS 64
+#define MAX_LIGHTS 1000
 // Steps the RNG and returns a floating-point value between 0 and 1 inclusive.
 float randf(inout uint rngState)
 {
@@ -68,7 +68,7 @@ bool ShadowRay(vec3 p0, vec3 n, vec3 p1)
 {
     prd.hit = true; 
     traceRayEXT(topLevelAS, gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsTerminateOnFirstHitEXT, 
-                0xFF, 0, 0, 0, p0 + 0.01 * n, 0.001, normalize(p1-p0), length(p1-p0), 0);
+                0xFF, 0, 0, 0, p0 + 0.01 * n, 0.001, normalize(p1-p0), length(p1-p0) - 0.05, 0);
     return prd.hit; 
 }
 
@@ -204,23 +204,36 @@ uint getFrameSeed()
   return push_constants.frame * gl_LaunchSizeEXT.x * gl_LaunchSizeEXT.y + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y + gl_LaunchIDEXT.x;
 }
 
-uint importanceSampling(vec3 position, vec3 normal, inout uint seed)
+float getLuminance(vec3 color) {
+  return max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.001);
+}
+
+uint importanceSampling(vec3 position, vec3 normal, inout uint seed, out float out_pdf)
 {
-  uint num_lights_to_sample = min(push_constants.num_lights, push_constants.max_lights);
+  uint num_lights_to_sample = push_constants.num_lights;
   float weights[MAX_LIGHTS];
   float totalWeight = 0.0;
 
   for (uint i = 0; i < num_lights_to_sample; i++)
   {
-    vec3 wi = normalize(lights[i].position - position);
-    float dist = length(lights[i].position - position);
+    vec3 wi = lights[i].position - position;
+    float distSq = dot(wi, wi); // slightly faster than length() squared
+    wi = normalize(wi);
     float NdotL = max(dot(normal, wi), 0.0);
-    float weight = NdotL / (dist * dist + 0.001); // Avoid division by zero
+    
+    float luminance = getLuminance(lights[i].intensity);
+    
+    // FIX 1 & 2: Factor in brightness, and use a larger minimum distance (0.05) 
+    // to prevent the weight from spiking to infinity when very close.
+    float weight = luminance * NdotL / max(distSq, 0.05); 
+    
     weights[i] = weight;
     totalWeight += weight;
-  } 
+  }
 
-  if (totalWeight < 0.001) {
+  // Fallback if all weights are zero (e.g., all lights are behind the surface)
+  if (totalWeight < 0.0001) {
+    out_pdf = 1.0 / float(num_lights_to_sample);
     return uint(randf(seed) * float(num_lights_to_sample));
   }
 
@@ -231,46 +244,47 @@ uint importanceSampling(vec3 position, vec3 normal, inout uint seed)
     cumulativeWeight += weights[i];
     if (r <= cumulativeWeight)
     {
+      // FIX 3: Output the exact mathematically correct PDF for this specific light
+      out_pdf = weights[i] / totalWeight; 
       return i;
     }
   }
+  
+  out_pdf = weights[num_lights_to_sample - 1] / totalWeight;
   return num_lights_to_sample - 1; 
 }
-
-
 
 vec3 ShadeDirectOnly(
   vec3 p, vec3 wo, vec3 n,
   vec3 albedo, float roughness, float metalness,
   float specularity, float opacity)
 {
-  vec3 direct_light = vec3(0.0);
+  vec3 direct_light  = vec3(0.0);
   vec3 dielectric_f0 = vec3(0.04) * specularity;
   vec3 f0 = mix(dielectric_f0, albedo, metalness);
-  uint local_seed = getFrameSeed() + 1000003u;
-  uint num_lights_to_sample = min(push_constants.num_lights, push_constants.max_lights);
-  float total_w = 0.0;
-  for (uint j = 0; j < push_constants.num_lights; j++) {
-    vec3 wj = normalize(lights[j].position - p);
-    float dj = length(lights[j].position - p);
-    total_w += max(dot(n, wj), 0.0) / max(dj * dj, 0.001);
-  }
+
+  uint local_seed = getFrameSeed() + 0u;
+  uint num_lights_to_sample = push_constants.num_lights;
+  float jitter_amount = push_constants.jitter_factor; 
+
+  // We no longer need to calculate total_w out here!
 
   for (uint i = 0; i < num_lights_to_sample; i++)
   {
-    uint index = importanceSampling(p, n, local_seed);
+    float pdf;
+    uint index = importanceSampling(p, n, local_seed, pdf); // Pass PDF by reference
+    
     vec3 wi    = normalize(lights[index].position - p);
     float dist = length(lights[index].position - p);
     float ndotl = max(dot(n, wi), 0.0);
-    float w = ndotl / (dist * dist + 0.001); 
 
-    
-    
-    float pdf = w / max(total_w, 0.0001);
+    vec3 jitter = vec3(randf(local_seed) * 2.0 - 1.0, randf(local_seed) * 2.0 - 1.0, randf(local_seed) * 2.0 - 1.0) * jitter_amount;
+    vec3 shadowTarget = lights[index].position + jitter; 
 
-    if (!ShadowRay(p, n, lights[index].position) && pdf > 0.0)
+    if (!ShadowRay(p, n, shadowTarget) && pdf > 0.0)
     {
-      vec3 L     = lights[index].intensity * (1.0 / (dist * dist));
+      // Prevents extreme artifacting/NaNs if distance is completely 0
+      vec3 L     = lights[index].intensity / max(dist * dist, 0.001); 
       vec3 contrib = L * chooseBRDF(n, wo, wi, albedo, roughness, metalness, specularity) * ndotl / pdf;
       direct_light += contrib / float(num_lights_to_sample);
     }
@@ -333,32 +347,27 @@ vec3 CalculateDirectIllumination(
   vec3 f0 = mix(dielectric_f0, albedo, metalness);
 
   uint local_seed = getFrameSeed() + 0u;
-  uint num_lights_to_sample = min(push_constants.num_lights, push_constants.max_lights);
-
-  float total_w = 0.0;
-  for (uint j = 0; j < push_constants.num_lights; j++) {
-    vec3 wj = normalize(lights[j].position - p);
-    float dj = length(lights[j].position - p);
-    total_w += max(dot(n, wj), 0.0) / max(dj * dj, 0.001);
-  }
-
+  uint num_lights_to_sample = min(push_constants.num_lights, push_constants.num_light_samples);
   float jitter_amount = push_constants.jitter_factor; 
+
+  // We no longer need to calculate total_w out here!
 
   for (uint i = 0; i < num_lights_to_sample; i++)
   {
-    uint index = importanceSampling(p, n, local_seed);
+    float pdf;
+    uint index = importanceSampling(p, n, local_seed, pdf); // Pass PDF by reference
+    
     vec3 wi    = normalize(lights[index].position - p);
     float dist = length(lights[index].position - p);
     float ndotl = max(dot(n, wi), 0.0);
-    float w = ndotl / (dist * dist + 0.001); 
-    float pdf = w / max(total_w, 0.0001);
 
-    vec3 jitter = vec3(randf(local_seed) * 2 - 1, randf(local_seed) * 2 - 1, randf(local_seed) * 2 - 1) * jitter_amount;
+    vec3 jitter = vec3(randf(local_seed) * 2.0 - 1.0, randf(local_seed) * 2.0 - 1.0, randf(local_seed) * 2.0 - 1.0) * jitter_amount;
     vec3 shadowTarget = lights[index].position + jitter; 
 
     if (!ShadowRay(p, n, shadowTarget) && pdf > 0.0)
     {
-      vec3 L     = lights[index].intensity * (1.0 / (dist * dist));
+      // Prevents extreme artifacting/NaNs if distance is completely 0
+      vec3 L     = lights[index].intensity / max(dist * dist, 0.001); 
       vec3 contrib = L * chooseBRDF(n, wo, wi, albedo, roughness, metalness, specularity) * ndotl / pdf;
       direct_light += contrib / float(num_lights_to_sample);
     }

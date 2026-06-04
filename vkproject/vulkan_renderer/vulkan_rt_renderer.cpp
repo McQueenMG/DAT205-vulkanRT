@@ -157,7 +157,7 @@ void VulkanRTRenderer::Render()
     ImGui::SliderInt("Indirect samples", &rt_pipeline.num_indirect_samples, 0, 3);
     ImGui::Checkbox("TAA enabled", &rt_pipeline.taa_blend);
     ImGui::Checkbox("Reflections", &rt_pipeline.enable_reflections);
-    ImGui::SliderInt("Max lights sampled", &rt_pipeline.max_lights, 1, 64);
+    ImGui::SliderInt("Max lights sampled", &rt_pipeline.num_light_samples, 1, 64);
     ImGui::SliderFloat("Shadow Jitter Factor", &rt_pipeline.jitter_factor, 0.0f, 1.0f);
     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
     ImGui::End();

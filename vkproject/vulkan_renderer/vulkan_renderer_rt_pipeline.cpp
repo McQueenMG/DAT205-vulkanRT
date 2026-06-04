@@ -192,7 +192,7 @@ void VulkanRTRenderer::RT_Pipeline::Submit(const glm::mat4 &P, const glm::mat4 &
         pc.enable_reflections = 1u; // Enable reflections
     else
         pc.enable_reflections = 0u; // Disable reflections
-    pc.max_lights = max_lights;
+    pc.num_light_samples = num_light_samples;
     pc.jitter_factor = jitter_factor;
     // Storing current PV for next frame
     prev_view_proj = P * V;
