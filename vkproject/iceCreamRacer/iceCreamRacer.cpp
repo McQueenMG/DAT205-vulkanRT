@@ -295,12 +295,18 @@ public:
                 dr->direction = car_direction;
             }
         }
-        if (car_pos.x > tunnel_entities.back().tunnel_entity->GetComponent<StaticRenderable>()->position.x - 30.0f)
+        if (car_pos.x>10.0f+28.0f*tunnel_counter || car_pos.x==20.0f+28.0f*tunnel_counter) {
+            
+            
+
+        }
+        if (car_pos.x > tunnel_entities.front().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 30.0f)
         {
             glm::vec3 new_tunnel_pos(tunnel_entities.back().tunnel_entity->GetComponent<StaticRenderable>()->position.x + 28.0f, 0.0f, -1.15f);
             tunnel_entities.push_back(createTunnelPart(entity_manager, new_tunnel_pos, tunnel_asset_id));
             removeTunnelPart(entity_manager, tunnel_entities.front());
             tunnel_entities.erase(tunnel_entities.begin());
+            tunnel_counter++;
         }
         
         renderer->SetCamera(camera_eye, camera_target, world_up);
@@ -347,6 +353,7 @@ private:
     bool is_left=true;
     int box_position1=0;
     int box_position2=0;
+    int tunnel_counter=0;
 
 };
 } 
