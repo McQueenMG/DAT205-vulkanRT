@@ -264,7 +264,7 @@ vec3 ShadeDirectOnly(
   vec3 f0 = mix(dielectric_f0, albedo, metalness);
 
   uint local_seed = getFrameSeed() + 0u;
-  uint num_lights_to_sample = push_constants.num_lights;
+  uint num_lights_to_sample = min(push_constants.num_lights, push_constants.num_light_samples);
   float jitter_amount = push_constants.jitter_factor; 
 
   // We no longer need to calculate total_w out here!
@@ -350,12 +350,10 @@ vec3 CalculateDirectIllumination(
   uint num_lights_to_sample = min(push_constants.num_lights, push_constants.num_light_samples);
   float jitter_amount = push_constants.jitter_factor; 
 
-  // We no longer need to calculate total_w out here!
-
   for (uint i = 0; i < num_lights_to_sample; i++)
   {
     float pdf;
-    uint index = importanceSampling(p, n, local_seed, pdf); // Pass PDF by reference
+    uint index = importanceSampling(p, n, local_seed, pdf); 
     
     vec3 wi    = normalize(lights[index].position - p);
     float dist = length(lights[index].position - p);
@@ -367,7 +365,7 @@ vec3 CalculateDirectIllumination(
     if (!ShadowRay(p, n, shadowTarget) && pdf > 0.0)
     {
       // Prevents extreme artifacting/NaNs if distance is completely 0
-      vec3 L     = lights[index].intensity / max(dist * dist, 0.001); 
+      vec3 L = lights[index].intensity / max(dist * dist, 0.001); 
       vec3 contrib = L * chooseBRDF(n, wo, wi, albedo, roughness, metalness, specularity) * ndotl / pdf;
       direct_light += contrib / float(num_lights_to_sample);
     }
